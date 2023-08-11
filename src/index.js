@@ -622,8 +622,8 @@ function readXmlFile(filePath) {
   filePath = path.join(__dirname, filePath);
   fs.readFile(filePath, (err, data) => {
     if (err) {
+      console.log('C-Bus Project File not found: ' + filePath); 
       console.error(err);
-      if (logging == true) { console.log('C-Bus Project File not found: ' + filePath); }
       return;
     }
     const parser = new xml2js.Parser();
@@ -632,12 +632,11 @@ function readXmlFile(filePath) {
         console.error(err);
         return;
       }
-      console.log(result);
       const units = result.Installation.Project[0].Network[0].Unit?.filter(unit => unit.CatalogNumber[0].startsWith('L55')) || [];
       const groupElements = [];
 
       units.forEach(unit => {
-        console.log(`Unit: ${JSON.stringify(unit)}`);
+        if (logging == true) { console.log(`Unit: ${JSON.stringify(unit)}`) };
         const catalogNumber = unit.CatalogNumber[0];
         const numGroups = parseInt(catalogNumber.substr(3, 2), 10);
         const groupAddressObj = unit.PP.find(pp => pp.$.Name === 'GroupAddress');
@@ -646,17 +645,19 @@ function readXmlFile(filePath) {
         const unitNameObj = unit.PP.find(pp => pp.$.Name === 'UnitName');
         const unitName = unitNameObj?.$?.Value;
         const groupAddress = groupAddressObj?.$?.Value;
+        let output = 1;
         const groups = groupAddress?.split(' ').map(hex => parseInt(hex, 16).toString()).join(' ').match(/.{2}/g).slice(0, numGroups) || [];
         groups.forEach(group => {
           const groupNumber = parseInt(group, 10);
           groupElements[groupNumber] = {
             isDimmer: catalogNumber[5] === 'D',
             unitName: unitName,
-            unitAddress: unitAddress
+            unitAddress: unitAddress,
+            output: output++
           };
         });
       });
-      console.log(`Group Elements: ${JSON.stringify(groupElements)}`);
+      if (logging == true) { console.log(`Group Elements: ${JSON.stringify(groupElements)}`) };
 
       const appGroups = result.Installation.Project[0].Network[0].Application.find(app => app.Address[0] === '56').Group;
 
@@ -665,11 +666,11 @@ function readXmlFile(filePath) {
         const groupElement = groupElements[groupAddress];
         if (groupElement) {
           groupElement.tagName = group.TagName[0];
-          console.log(`Group Name: ${group.TagName[0]}, Address: ${groupAddress}, Type: ${groupElement.isDimmer ? 'Dimmer' : 'Relay'}`);
+          console.log(`TagName: ${group.TagName[0]}, Address: ${groupAddress}, UnitOutput: ${groupElement.output}, UnitName: ${groupElement.unitName}, UnitAddress: ${groupElement.unitAddress}, Type: ${groupElement.isDimmer ? 'Dimmer' : 'Relay'}`);
         }
       });
 
-      console.log(`Group Elements: ${JSON.stringify(groupElements)}`);
+      if (logging == true) { console.log(`Group Elements: ${JSON.stringify(groupElements)}`) };
       // Now Publish the MQTT Discovery Messages
 
     });
