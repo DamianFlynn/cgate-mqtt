@@ -43,7 +43,7 @@ var messageinterval = settings.messageinterval || 200;
 var discoverySent = [];
 var HASS_DEVICE_CLASSES = {
   LIGHT: "light",
-  SWITCH: "switch",
+  RELAY: "switch",
   BUTTON: "button",
   DEVICE: "device"
 };
@@ -112,9 +112,7 @@ var EVENTPORT = 20025;
 var logging = settings.logging;
 var isRamping = false;
 
-// Figure out the topic structure
 
-readXmlFile('HOME.xml');
 
 // Connect to cgate via telnet
 command.connect(COMPORT, HOST);
@@ -130,7 +128,10 @@ function ramping() {
 function started() {
   if (commandConnected && eventConnected && client.connected) {
     console.log('ALL CONNECTED');
+    // Figure out the topic structure
     sendDiscoveryMessage(HASS_DEVICE_CLASSES.DEVICE);   
+    readXmlFile('HOME.xml');
+
     if (settings.getallnetapp && settings.getallonstart) {
       console.log('Getting all values');
       cgateCommand.write('GET //' + settings.cbusname + '/' + settings.getallnetapp + '/* level\n');
@@ -250,9 +251,8 @@ client.on('connect', function () { // When connected
     });
   });
 
-  // publish a message to a topic
-
-  mqttMessage.publish(topicRoot + '/' + topicProject + '/' + topicMeta + '/' + topicState, "online", options, function () { });
+  // publish a message to a topic  
+  mqttMessage.publish(topicRoot + '/bridge/' + topicMeta + '/' + topicState, "online", options, function () { });
 });
 
 command.on('error', function (err) {
@@ -308,24 +308,33 @@ command.on('data', function (data) {
         var parts2 = parts1[1].toString().split(" ");
 
         address = (parts2[0].substring(0, parts2[0].length - 1)).split("/");
-        if (settings.enableHassDiscovery)
-          sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, address[3], address[4], address[5]);
+        let uniqueId = `cbus_${address[3]}_${address[4]}_${address[5]}`;
+
+        // if (settings.enableHassDiscovery)
+        //   sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, address[3], address[4], address[5]);
 
         var level = parts2[1].split("=");
         if (parseInt(level[1]) == 0) {
-          if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' OFF'); }
-          if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' 0%'); }
-          mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/state', 'OFF', options, function () { });
-          mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/level', '0', options, function () { });
+          payload = {
+            state: "OFF",
+            brightness: 0,
+            transition: 0,
+            cbus_source_addreess: uniqueId,
+          }
+          
           eventEmitter.emit('level', address[3] + '/' + address[4] + '/' + address[5], 0);
         } else {
-          if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' ON'); }
-          if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' ' + Math.round(parseInt(level[1]) * 100 / 255).toString() + '%'); }
-          mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/state', 'ON', options, function () { });
-          mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/level', Math.round(parseInt(level[1]) * 100 / 255).toString(), options, function () { });
+          payload = {
+            state: "ON",
+            brightness: Math.round(parseInt(level[1]) * 100 / 255).toString(),
+            transition: 0,
+            cbus_source_addreess: uniqueId,
+          }
           eventEmitter.emit('level', address[3] + '/' + address[4] + '/' + address[5], Math.round(parseInt(level[1])));
 
         }
+        mqttMessage.publish(topicRoot + '/light/' + topicMeta + '/' + uniqueId, JSON.stringify(payload), options, function () { });
+
       } else if (parts1[0] == "347") {
         tree += parts1[1] + '\n';
       } else if (parts1[0] == "343") {
@@ -334,7 +343,8 @@ command.on('data', function (data) {
         parseString(tree, function (err, result) {
           try {
             if (logging === true) { console.log("C-Bus tree received:" + JSON.stringify(result)) }
-            mqttMessage.publish(topicPrefix + 'cbus/read/' + treenet + '///tree', JSON.stringify(result))
+            // mqttMessage.publish(topicPrefix + 'cbus/read/' + treenet + '///tree', JSON.stringify(result))
+            mqttMessage.publish(topicRoot + '/bridge/' + topicMeta + '/tree/' + treenet, JSON.stringify(result), options, function () { });
           } catch (err) {
             console.log(err)
           }
@@ -344,21 +354,27 @@ command.on('data', function (data) {
         var parts2 = parts1[0].toString().split(" ");
         if (parts2[0] == "300") {
           address = (parts2[1].substring(0, parts2[1].length - 1)).split("/");
+          let uniqueId = `cbus_${address[3]}_${address[4]}_${address[5]}`;
           var level = parts2[2].split("=");
           if (parseInt(level[1]) == 0) {
-            if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' OFF'); }
-            if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' 0%'); }
-            mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/state', 'OFF', options, function () { });
-            mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/level', '0', options, function () { });
+            payload = {
+              state: "OFF",
+              brightness: 0,
+              transition: 0,
+              cbus_source_addreess: uniqueId,
+            }
             eventEmitter.emit('level', address[3] + '/' + address[4] + '/' + address[5], 0);
           } else {
-            if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' ON'); }
-            if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' ' + Math.round(parseInt(level[1]) * 100 / 255).toString() + '%'); }
-            mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/state', 'ON', options, function () { });
-            mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/level', Math.round(parseInt(level[1]) * 100 / 255).toString(), options, function () { });
+            payload = {
+              state: "ON",
+              brightness: Math.round(parseInt(level[1]) * 100 / 255).toString(),
+              transition: 0,
+              cbus_source_addreess: uniqueId,
+            }
             eventEmitter.emit('level', address[3] + '/' + address[4] + '/' + address[5], Math.round(parseInt(level[1])));
 
           }
+          mqttMessage.publish(topicRoot + '/light/' + topicMeta + '/' + uniqueId, JSON.stringify(payload), options, function () { });
 
         }
       }
@@ -382,12 +398,11 @@ event.on('data', function (data) {
         sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, address[3], address[4], address[5]);
       if (logging == true) { console.log('C-Bus trigger received: ' + uniqueId ); }
       
-      //mqttMessage.publish('cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/state', '{"event_type": "hold"}', options, function () { });   
-      //${topicRoot}/${deviceClass}/${uniqueId}/${topicState}
-      payload = {
+      payload=  {
         event_type: "hold"
       }
-      mqttMessage.publish(topicRoot + '/' + topicProject + '/' + uniqueId + '/' + topicState, JSON.stringify(payload), options, function () { });   
+
+      mqttMessage.publish(topicRoot + '/sensor/' + topicMeta + '/' + uniqueId, JSON.stringify(payload), options, function () { });   
       break;
     
     
@@ -397,85 +412,59 @@ event.on('data', function (data) {
     // mqtt: cbus/device/entity/level=100
     case "lighting":
 
-      if (settings.enableHassDiscovery)
-        sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, address[3], address[4], address[5]);
+      // if (settings.enableHassDiscovery)
+      //   sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, address[3], address[4], address[5]);
     
       switch (parts[1]) {
         case "on":
-          if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' ON'); }
-          if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' 100%'); }
-          //mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/state', 'ON', options, function () { });
-          //mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/level', '100', options, function () { });
-
           payload = {
             state: "ON",
             brightness: Math.round(parseInt(parts[3]) * 100 / 255).toString(),
             transition: 0,
             cbus_source_addreess: parts[2],
           }
-
-          mqttMessage.publish(topicRoot + '/' + topicProject + '/' + uniqueId + '/' + topicState, JSON.stringify(payload), options, function () { });   
           break;
 
         case "off":
-          if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' OFF'); }
-          if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' 0%'); }
-          //mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/state', 'OFF', options, function () { });
-          //mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/level', '0', options, function () { });
-
           payload = {
             state: "OFF",
             brightness: 0,
             transition: 0,
             cbus_source_addreess: parts[2],
           }
-
-          mqttMessage.publish(topicRoot + '/' + topicProject + '/' + uniqueId + '/' + topicState, JSON.stringify(payload), options, function () { });   
           break;
 
         case "ramp":
           if (parseInt(parts[3]) > 0) {
-            if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' ON'); }
-            if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' ' + Math.round(parseInt(parts[3]) * 100 / 255).toString() + '%'); }
-            //mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/state', 'ON', options, function () { });
-            //mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/level', Math.round(parseInt(parts[3]) * 100 / 255).toString(), options, function () { });
-
             payload = {
               state: "ON",
               brightness: Math.round(parseInt(parts[3]) * 100 / 255).toString(),
               transition: 0,
               cbus_source_addreess: parts[2],
             }
-  
-            mqttMessage.publish(topicRoot + '/' + topicProject + '/' + uniqueId + '/' + topicState, JSON.stringify(payload), options, function () { });   
-  
-
           } else {
-            if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' OFF'); }
-            if (logging == true) { console.log('C-Bus status received: ' + address[3] + '/' + address[4] + '/' + address[5] + ' 0%'); }
-            //mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/state', 'OFF', options, function () { });
-            //mqttMessage.publish(topicPrefix + 'cbus/read/' + address[3] + '/' + address[4] + '/' + address[5] + '/level', '0', options, function () { });
-
             payload = {
               state: "OFF",
               brightness: 0,
               transition: 0,
               cbus_source_addreess: parts[2],
             }
-  
-            mqttMessage.publish(topicRoot + '/' + topicProject + '/' + uniqueId + '/' + topicState, JSON.stringify(payload), options, function () { });   
-  
           }
           break;
         default:
       }
+
+      if (logging == true) { console.log('C-Bus Light status: ' + uniqueId + ': ' + JSON.stringify(payload) ); }
+      mqttMessage.publish(topicRoot + '/light/' + topicMeta + '/' + uniqueId, JSON.stringify(payload), options, function () { });
+      break;
+
     default:
   }
 
 });
 
 
-function sendDiscoveryMessage(deviceClass, networkId, serviceId, unitId) {
+function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, TagName, outputChannel, unitName, unitAddress, outputType) {
   //https://www.home-assistant.io/integrations/event.mqtt/
 
   //https://github.com/home-assistant/core/issues/97678
@@ -490,68 +479,71 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, unitId) {
   //  <object_id>: The ID of the device. This is only to allow for separate topics for each device and is not used for the entity_id. The ID of the device must only consist of characters from the character class [a-zA-Z0-9_-] (alphanumerics, underscore and hyphen).
 
 
-  let uniqueId = `cbus_${networkId}_${serviceId}_${unitId}`;
+  let uniqueId = `cbus_${networkId}_${serviceId}_${groupId}`;
   if (discoverySent.includes(uniqueId)) return;
   if (logging == true) console.log('Sending Hass discovery message');
   let payload = {};
   let mqttTopic = "";
   switch (deviceClass) {
     case "device":
+      console.log('Sending HASS Discovery message for CBUS-MQTT');
       payload = {
-        //~: `${topicMeta}`,
-        name: 'cbus-mqtt',
+        '~': `${topicMeta}`,
+        name: 'Bridge Status',
         unique_id: 'cbus-mqtt',
-        state_topic: `${topicRoot}/${topicProject}/${topicMeta}/${topicState}`, // [cbus][/home][/binary_sensor/cbus-mqtt][/state]
+        state_topic: `${topicRoot}/bridge/${topicMeta}/${topicState}`, // [cbus]/[bridge]/[cbus-mqtt]/[state]
         device: {
           identifiers: ['cbus-mqtt'],
-          name: 'cbus-mqtt',
+          name: 'C-Bus MQTT Bridge',
           manufacturer: 'DamianFlynn.com',
-          model: 'cbus-mqtt',
-          sw_version: '0.1',
+          model: 'C-Bus C-Gate MQTT Bridge',
+          sw_version: '0.3',
         }
       };
-      // [homeassistant][/binary_sensor/cbus-mqtt][/config]
-      mqttTopic = `${topicDiscovery}/binary_sensor/${topicMeta}/${topicConfig}`;      
+      //mqttTopic = `${topicDiscovery}/binary_sensor/${topicMeta}/${topicConfig}`; // [homeassistant][/binary_sensor/cbus-mqtt][/config]     
+      mqttTopic = `${topicDiscovery}/sensor/${topicMeta}/${topicConfig}`; // [homeassistant][/binary_sensor/cbus-mqtt][/config]     
       break;
     
     case "light":
       payload = {
-        name: `${uniqueId}`,
+        name: `${TagName}`,
         unique_id: `${uniqueId}`,
-        state_topic: `${topicRoot}/${deviceClass}/${uniqueId}/${topicState}`, // [cbus]/[light]/[cbus_254_54_01]/[state]
-        //state_topic: `homeassistant/cbus/read/${networkId}/${serviceId}/${unitId}/state`,
-        command_topic: `${topicRoot}/${deviceClass}/${uniqueId}/${topicSet}`, // [cbus]/[light]/[cbus_254_54_01]/[set]
-        //command_topic: `homeassistant/cbus/write/${networkId}/${serviceId}/${unitId}/switch`,
-        brightness_state_topic: `${topicRoot}/${deviceClass}/${uniqueId}/${topicState}`, // [cbus]/[light]/[cbus_254_54_01]/[state]
-        //brightness_state_topic: `homeassistant/cbus/read/${networkId}/${serviceId}/${unitId}/level`,
-        brightness_command_topic: `${topicRoot}/${deviceClass}/${uniqueId}/${topicSet}`, // [cbus]/[light]/[cbus_254_54_01]/[set]
-        //brightness_command_topic: `homeassistant/cbus/write/${networkId}/${serviceId}/${unitId}/ramp`,
-        brightness_scale: 100,
+        state_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[state]
+        command_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[set]
         qos: 0,
         payload_on: "ON",
         payload_off: "OFF",
         optimistic: false,
         icon: "mdi:lightbulb-on-50",
         device: {
+          // outputChannel, unitName, unitAddress, outputType
           identifiers: [uniqueId],
           name: uniqueId,
           manufacturer: "Clipsal",
-          model: "C-Bus Lighting Application",
-          connections: ['cbus_address', `${networkId}/${serviceId}/${unitId}`],
+          model: `${unitName} [Channel ${outputChannel}]`,
+          connections: ['cbus_address', `${networkId}/${serviceId}/${groupId}`],
           via_device: 'cbus-mqtt'
         }
       }
+      if (outputType == "Dimmer") {
+        payload.brightness_state_topic = `${topicRoot}/${deviceClass}/${uniqueId}/${topicState}`; // [cbus]/[light]/[cbus_254_54_01]/[state]
+        //brightness_state_topic: `homeassistant/cbus/read/${networkId}/${serviceId}/${groupId}/level`,
+        payload.brightness_command_topic = `${topicRoot}/${deviceClass}/${uniqueId}/${topicSet}`; // [cbus]/[light]/[cbus_254_54_01]/[set]
+        //brightness_command_topic: `homeassistant/cbus/write/${networkId}/${serviceId}/${groupId}/ramp`,
+        payload.brightness_scale = 100;
+      }
+      
       // [homeassistant]/[light]/[cbus-mqtt]/[cbus_254_54_01]/[config]
-      mqttTopic = `${topicDiscovery}/${deviceClass}/${topicMeta}/${uniqueId}/${topicConfig}`;  
-
+      //mqttTopic = `${topicDiscovery}/${deviceClass}/${topicMeta}/${uniqueId}/${topicConfig}`;  
+      mqttTopic = `${topicDiscovery}/sensor/${topicMeta}/${uniqueId}`;
       break;
 
     case "switch":
       payload = {
         name: `${uniqueId}`,
         unique_id: `${uniqueId}`,
-        state_topic: `homeassistant/cbus/read/${networkId}/${serviceId}/${unitId}/state`,
-        command_topic: `homeassistant/cbus/write/${networkId}/${serviceId}/${unitId}/switch`,
+        state_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[state]
+        command_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[set]
         qos: 0,
         payload_on: "ON",
         payload_off: "OFF",
@@ -562,13 +554,13 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, unitId) {
           name: uniqueId,
           manufacturer: "Clipsal",
           model: "C-Bus Lighting Application",
-          connections: ['cbus_address', `${networkId}/${serviceId}/${unitId}`],
+          connections: ['cbus_address', `${networkId}/${serviceId}/${groupId}`],
           via_device: 'cbus-mqtt'  
         }
       }
-      homeassistant/light/cbus_groupaddress/config
-      mqttTopic = `${topicDiscovery}${topicMeta}${topicConfig}`;  // [homeassistant][/light/cbus-mqtt][/state]
-    
+      // [homeassistant]/[light]/[cbus-mqtt]/[cbus_254_54_01]/[config]
+      mqttTopic = `${topicDiscovery}/${deviceClass}/${topicMeta}/${uniqueId}/${topicConfig}`;  
+
       break;
 
     case "button":
@@ -583,7 +575,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, unitId) {
           name: uniqueId,
           manufacturer: "Clipsal",
           model: "C-Bus Trigger Application",
-          connections: ['cbus_address', `${networkId}/${serviceId}/${unitId}`],
+          connections: ['cbus_address', `${networkId}/${serviceId}/${groupId}`],
           via_device: 'cbus-mqtt'
         },
         device_class: "button",
@@ -593,7 +585,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, unitId) {
           "LONG"
         ],
         //state_topic: "Devices/PLC/House/Out/DigitalInputs/Pushbuttons/FB_DI_PB_001"
-        state_topic: `cbus/read/${networkId}/${serviceId}/${unitId}/state`,
+        state_topic: `cbus/read/${networkId}/${serviceId}/${groupId}/state`,
         //The JSON payload should contain the event_type element. 
         icon: "mdi:gesture-double-tap",
         qos: 2
@@ -667,12 +659,14 @@ function readXmlFile(filePath) {
         if (groupElement) {
           groupElement.tagName = group.TagName[0];
           console.log(`TagName: ${group.TagName[0]}, Address: ${groupAddress}, UnitOutput: ${groupElement.output}, UnitName: ${groupElement.unitName}, UnitAddress: ${groupElement.unitAddress}, Type: ${groupElement.isDimmer ? 'Dimmer' : 'Relay'}`);
+          if (settings.enableHassDiscovery) {
+            // Now Publish the MQTT Discovery Messages
+            sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, '254', "56", groupAddress, group.TagName[0], groupElement.output, groupElement.unitName, groupElement.unitAddress, groupElement.isDimmer ? 'Dimmer' : 'Relay');
+          }
         }
       });
 
       if (logging == true) { console.log(`Group Elements: ${JSON.stringify(groupElements)}`) };
-      // Now Publish the MQTT Discovery Messages
-
     });
   });
 }
