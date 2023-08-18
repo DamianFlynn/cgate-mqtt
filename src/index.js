@@ -20,9 +20,9 @@ if (settings.topicPrefix) {
 }
 
 var topicRoot = 'cbus'
-var topicDiscovery = 'homeassistant'
+//var topicDiscovery = 'homeassistant'
 var topicProject = 'home'
-var topicMeta = 'cbus-mqtt'
+var topicMeta = 'cbus2-mqtt'
 var topicConfig = 'config'
 var topicState = 'state'
 var topicSet = 'set'
@@ -488,20 +488,21 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, TagNam
     case "device":
       console.log('Sending HASS Discovery message for CBUS-MQTT');
       payload = {
-        '~': `${topicMeta}`,
+        // '~': `${topicMeta}`,
         name: 'Bridge Status',
-        unique_id: 'cbus-mqtt',
-        state_topic: `${topicRoot}/bridge/${topicMeta}/${topicState}`, // [cbus]/[bridge]/[cbus-mqtt]/[state]
+        unique_id: `${topicMeta}`,
+        state_topic: `${topicRoot}/bridge/${topicMeta}/${topicState}`, 
         device: {
-          identifiers: ['cbus-mqtt'],
-          name: 'C-Bus MQTT Bridge',
+          identifiers: [`${topicMeta}`],
+          name: 'CBus',
+          //sw_version: "https://github.com/damianflynn/cgate-mqtt", 
           manufacturer: 'DamianFlynn.com',
           model: 'C-Bus C-Gate MQTT Bridge',
           sw_version: '0.3',
         }
       };
-      //mqttTopic = `${topicDiscovery}/binary_sensor/${topicMeta}/${topicConfig}`; // [homeassistant][/binary_sensor/cbus-mqtt][/config]     
-      mqttTopic = `${topicDiscovery}/sensor/${topicMeta}/${topicConfig}`; // [homeassistant][/binary_sensor/cbus-mqtt][/config]     
+         
+      mqttTopic = `homeassistant/binary_sensor/${topicMeta}/config`; // [homeassistant][/binary_sensor/cbus-mqtt][/config]     
       break;
     
     case "light":
@@ -509,33 +510,39 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, TagNam
         name: `${TagName}`,
         unique_id: `${uniqueId}`,
         state_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[state]
-        command_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[set]
+        command_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}/set`, // [cbus]/[light]/[cbus_254_54_01]/[set]
         qos: 0,
         payload_on: "ON",
         payload_off: "OFF",
         optimistic: false,
-        icon: "mdi:lightbulb-on-50",
+        icon: "mdi:lightbulb-on",
         device: {
-          // outputChannel, unitName, unitAddress, outputType
-          identifiers: [uniqueId],
-          name: uniqueId,
-          manufacturer: "Clipsal",
-          model: `${unitName} [Channel ${outputChannel}]`,
-          connections: ['cbus_address', `${networkId}/${serviceId}/${groupId}`],
-          via_device: 'cbus-mqtt'
+          identifiers: [`${topicMeta}`],
+          name: 'CBus',
+          manufacturer: 'DamianFlynn.com',
+          model: 'C-Bus C-Gate MQTT Bridge',
+          sw_version: '0.3',
+          via_device: `${topicMeta}`
         }
       }
       if (outputType == "Dimmer") {
-        payload.brightness_state_topic = `${topicRoot}/${deviceClass}/${uniqueId}/${topicState}`; // [cbus]/[light]/[cbus_254_54_01]/[state]
-        //brightness_state_topic: `homeassistant/cbus/read/${networkId}/${serviceId}/${groupId}/level`,
-        payload.brightness_command_topic = `${topicRoot}/${deviceClass}/${uniqueId}/${topicSet}`; // [cbus]/[light]/[cbus_254_54_01]/[set]
-        //brightness_command_topic: `homeassistant/cbus/write/${networkId}/${serviceId}/${groupId}/ramp`,
+        payload.brightness_state_topic = `${topicRoot}/${deviceClass}/${uniqueId}/brightness`; 
+        payload.brightness_command_topic = `${topicRoot}/${deviceClass}/${uniqueId}/brightness/set`;
         payload.brightness_scale = 100;
+        icon: "mdi:lightbulb-on-50";
       }
       
-      // [homeassistant]/[light]/[cbus-mqtt]/[cbus_254_54_01]/[config]
-      //mqttTopic = `${topicDiscovery}/${deviceClass}/${topicMeta}/${uniqueId}/${topicConfig}`;  
-      mqttTopic = `${topicDiscovery}/sensor/${topicMeta}/${uniqueId}`;
+          // outputChannel, unitName, unitAddress, outputType
+          //identifiers: [uniqueId],
+          // name: TagName, //uniqueId,
+          // model: `${unitName} [Channel ${outputChannel}]`,
+          // manufacturer: "Clipsal",
+          // connections: [
+          //   ["cbus_address", `${networkId}/${serviceId}/${groupId}`],
+          //   ["Unit Name", `${unitName}`],
+          //   ["Output Channel", `${outputChannel}`],
+
+      mqttTopic = `homeassistant/light/${topicMeta}/${uniqueId}/${topicConfig}`;
       break;
 
     case "switch":
@@ -548,18 +555,18 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, TagNam
         payload_on: "ON",
         payload_off: "OFF",
         optimistic: false,
-        icon: "mdi:lightbulb-on",
+        
         device: {
           identifiers: [uniqueId],
           name: uniqueId,
           manufacturer: "Clipsal",
           model: "C-Bus Lighting Application",
           connections: ['cbus_address', `${networkId}/${serviceId}/${groupId}`],
-          via_device: 'cbus-mqtt'  
+          via_device: `${topicMeta}` 
         }
       }
       // [homeassistant]/[light]/[cbus-mqtt]/[cbus_254_54_01]/[config]
-      mqttTopic = `${topicDiscovery}/${deviceClass}/${topicMeta}/${uniqueId}/${topicConfig}`;  
+      mqttTopic = `homeassistant/${deviceClass}/${topicMeta}/${uniqueId}/${topicConfig}`;  
 
       break;
 
@@ -576,7 +583,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, TagNam
           manufacturer: "Clipsal",
           model: "C-Bus Trigger Application",
           connections: ['cbus_address', `${networkId}/${serviceId}/${groupId}`],
-          via_device: 'cbus-mqtt'
+          via_device: `${topicMeta}`
         },
         device_class: "button",
         event_types: [
@@ -638,19 +645,26 @@ function readXmlFile(filePath) {
         const unitName = unitNameObj?.$?.Value;
         const groupAddress = groupAddressObj?.$?.Value;
         let output = 1;
-        const groups = groupAddress?.split(' ').map(hex => parseInt(hex, 16).toString()).join(' ').match(/.{2}/g).slice(0, numGroups) || [];
+        const groups = groupAddress?.split(' ').map(hex => parseInt(hex, 16).toString()).slice(0, numGroups)
+        //const groups = groupAddress?.split(' ').map(hex => parseInt(hex, 16).toString())//.join('').match(/.{2} /g).slice(0, numGroups).map(group => group.trim()) || [];
+        
+        //const groups = groupAddress?.split(' ').map(hex => parseInt(hex, 16).toString()).join('').match(/.{2} /g).slice(0, numGroups).map(group => group.trim()) || [];
+        //const groups = groupAddress?.split(' ').map(hex => parseInt(hex, 16).toString()).join(' ').match(/.{2}/g).slice(0, numGroups) || [];
         groups.forEach(group => {
           const groupNumber = parseInt(group, 10);
           groupElements[groupNumber] = {
             isDimmer: catalogNumber[5] === 'D',
             unitName: unitName,
             unitAddress: unitAddress,
+            groupNumber: groupNumber,
             output: output++
           };
+          console.log(`Pack ${unitAddress} [ ${unitName} ] Channel [ ${output}] -> Light Group [ ${groupNumber} ] `)
         });
       });
       if (logging == true) { console.log(`Group Elements: ${JSON.stringify(groupElements)}`) };
-
+      console.log(`Found ${units.length} Light Channel Packs, configured for ${groupElements.length} Group Elements: `);
+      
       const appGroups = result.Installation.Project[0].Network[0].Application.find(app => app.Address[0] === '56').Group;
 
       appGroups.forEach(group => {
@@ -658,11 +672,13 @@ function readXmlFile(filePath) {
         const groupElement = groupElements[groupAddress];
         if (groupElement) {
           groupElement.tagName = group.TagName[0];
-          console.log(`TagName: ${group.TagName[0]}, Address: ${groupAddress}, UnitOutput: ${groupElement.output}, UnitName: ${groupElement.unitName}, UnitAddress: ${groupElement.unitAddress}, Type: ${groupElement.isDimmer ? 'Dimmer' : 'Relay'}`);
+          console.log(`TagName: Pack (${groupElement.unitAddress}) ${groupElement.unitName} [${groupElement.output}], Type: ${groupElement.isDimmer ? 'Dimmer' : 'Relay'} -> ${group.TagName[0]}`);
           if (settings.enableHassDiscovery) {
             // Now Publish the MQTT Discovery Messages
             sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, '254', "56", groupAddress, group.TagName[0], groupElement.output, groupElement.unitName, groupElement.unitAddress, groupElement.isDimmer ? 'Dimmer' : 'Relay');
           }
+        } else {
+          console.log(`!!! Group [${groupAddress}] tagged as '${group.TagName[0]}'  was not found in list of Group Elements`);
         }
       });
 
