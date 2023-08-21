@@ -320,24 +320,13 @@ function handleTriggerEvent(parts, uniqueId) {
     console.log(`C-Bus trigger received: ${uniqueId}`);
   }
 
-
-  // JSON.stringify(parts)
-  // ["trigger","event","//HOME/254/202/1","3","#sourceunit=13","OID=00191050-2250-103c-89a3-c02bb44ff242\r\n"]
-  
-  
-  //  = {
-  //   tagName: level.TagName[0],
-  //   triggerName: triggerTagName,
-  //   triggerAddress: triggerAddress
-  // };
-
   const sourceunit = parts[4].split('&').find(param => param.startsWith('#sourceunit='));
   const payload = {
     event_type: triggerActions[parseInt(parts[3], 10)].tagName,
     trigger_unit: sourceunit ? sourceunit.split('=')[1] : 'unknown'
   };
 
-  mqttMessage.publish(`cbus/event/cbus2-mqtt/${uniqueId}/state`, payload, options, function () { });
+  mqttMessage.publish(`cbus/event/cbus2-mqtt/${uniqueId}/state`, JSON.stringify(payload), options, function () { });
 }
 
 function handleLightingEvent(parts, uniqueId) {
@@ -417,7 +406,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
     name: 'C-Bus ',
     manufacturer: 'DamianFlynn.com',
     model: 'C-Bus C-Gate MQTT Bridge',
-    sw_version: '0.4',
+    sw_version: '0.5',
     via_device: `cbus2-mqtt`
   };
   let payload = {};
