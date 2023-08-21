@@ -42,9 +42,6 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
 
-      - name: Available platforms
-        run: echo ${{ steps.buildx.outputs.platforms }}
-
       # Workaround: https://github.com/docker/build-push-action/issues/461
       - name: Setup Docker buildx
         id: buildx
@@ -94,10 +91,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: ./Dockerfile
-          platforms: linux/arm64, linux/amd64, linux/arm/v7, linux/arm/v6
+          platforms: linux/arm64, linux/amd64
           tags: |
             ghcr.io/${{env.REPO}}:latest
             ghcr.io/${{env.REPO}}:${{steps.version.outputs.date_version}}
             ${{ steps.meta.outputs.tags }}
-          #platforms: linux/arm/v8
-          # platforms: linux/arm64, linux/amd64
+
+          # , linux/arm/v7, linux/arm/v6
