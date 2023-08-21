@@ -1,18 +1,13 @@
 
 name: Docker Image Publish
 
-concurrency:  # avoid concurrent runs  ¯\_(ツ)_/¯
-  group: ${{ github.ref }}-${{ github.workflow }}
-  cancel-in-progress: true
-
 on:
-  workflow_dispatch:
   push:
-    branches: [ "master" ]
+    branches: [ "main" ]
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "main" ]
 
 env:
   # Use docker.io for Docker Hub if empty
