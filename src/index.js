@@ -45,16 +45,8 @@ var HASS_DEVICE_CLASSES = {
 };
 
 
-
-// Username and password
-var OPTIONS = {};
-if (settings.mqttusername && settings.mqttpassword) {
-  OPTIONS.username = settings.mqttusername;
-  OPTIONS.password = settings.mqttpassword;
-}
-
 // Connect to MQTT Broker
-var mqttClient = mqtt.connect(`mqtt://${settings.mqtt}`, OPTIONS);
+var mqttClient = mqtt.connect(`mqtt://${settings.mqtt}`, settings.mqttusername && settings.mqttpassword ? { username: settings.mqttusername, password: settings.mqttpassword } : {});
 
 
 var cbusCmdChannel = new net.Socket();
@@ -106,7 +98,13 @@ var mqttMessage = {
       mqttMessage.interval = null
     } else {
       var msg = mqttMessage.queue.shift()
-      mqttClient.publish(msg.topic, msg.payload)
+      mqttClient.publish(msg.topic, msg.payload, { retain: true }, (err) => {
+        if (err) {
+          console.error('Failed to publish message:', err);
+        } else {
+          console.log('Message published with retain flag set to true');
+        }
+      });
     }
   },
   interval: null,
