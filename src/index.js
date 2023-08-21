@@ -331,10 +331,10 @@ function handleTriggerEvent(parts, uniqueId) {
   //   triggerAddress: triggerAddress
   // };
 
-  const sourceunit = parts[4].split('&').find(param => param.startsWith('sourceunit='));
+  const sourceunit = parts[4].split('&').find(param => param.startsWith('#sourceunit='));
   const payload = {
     event_type: triggerActions[parseInt(parts[3], 10)].tagName,
-    trigger_unit: sourceunit ? sourceunit.split('=')[1] : null
+    trigger_unit: sourceunit ? sourceunit.split('=')[1] : 'unknown'
   };
 
   mqttMessage.publish(`cbus/event/cbus2-mqtt/${uniqueId}/state`, payload, options, function () { });
