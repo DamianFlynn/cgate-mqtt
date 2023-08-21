@@ -258,8 +258,10 @@ function started() {
     readXmlFile('HOME.xml');
 
     if (settings.getallnetapp && settings.getallonstart) {
+      // setTimeout(() => {
       console.log('Getting all values');
       cgateCommand.write('GET //' + settings.cbusname + '/' + settings.getallnetapp + '/* level\n');
+      // }, 60000); // wait for 60 seconds before executing the command
     }
     if (settings.getallnetapp && settings.getallperiod) {
       clearInterval(interval);
@@ -301,8 +303,11 @@ function handleMessage(topicArg, message) {
           }
       }
       break;
-    case "transition":
-      console.log(`[${parts[4].toLowerCase()}] message for ${cbusAddress} received: ${message}`);
+    case "state":
+      // ignoring state messages
+      break;
+    case "attributes":
+      // ignoring attribute messages
       break;
     default:
       console.log(`Ignoring [${parts[parts.length - 1].toLowerCase()}] "${message}" message for ${topic}`);
@@ -348,17 +353,17 @@ function handleLightingEvent(parts, uniqueId) {
 
 
 function handleLightData(parts) {
-  const address = parts[0].split("/");
-  const uniqueId = `cbus_${address[3]}_${address[4]}_${address[5]}`;
+  const address = parts[0].slice(2).split('/').slice(1, 4).map(str => str.replace(':', ''));
+  const uniqueId = `cbus_${address[0]}_${address[1]}_${address[2]}`;
   const level = parseInt(parts[1].split("=")[1]);
 
   if (level === 0) {
     // Light is 'Off'
-    eventEmitter.emit('level', address.slice(3).join('/'), 0);
+    eventEmitter.emit('level', address.join('/'), 0);
     mqttMessage.publish(`cbus/light/cbus2-mqtt/${uniqueId}/state`, "OFF", options, function () { });
   } else {
     // Light is 'On' (Dimmer) 
-    eventEmitter.emit('level', address.slice(3).join('/'), Math.round(level));
+    eventEmitter.emit('level', address.join('/'), Math.round(level));
     mqttMessage.publish(`cbus/light/cbus2-mqtt/${uniqueId}/brightness`, Math.round(level * 100 / 255).toString(), options, function () { });
     mqttMessage.publish(`cbus/light/cbus2-mqtt/${uniqueId}/state`, "ON", options, function () { });
   }
@@ -379,7 +384,7 @@ function handleParsedTree(result) {
 }
 
 function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagName, outputChannel, unitName, unitAddress, outputType, unitCatalogNumber) {
-  const uniqueId = `cbus_${networkId}_${serviceId}_${groupId}`;
+  const uniqueId = deviceClass === 'device' ? `cbus_${settings.cbusname}` : `cbus_${networkId}_${serviceId}_${groupId}`;
   if (discoverySent.includes(uniqueId)) {
     return;
   }
@@ -391,10 +396,10 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
   const mqttTopic = `${mqttTopicPrefix}/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/config`;
   const device = {
     identifiers: [`cbus2-mqtt`],
-    name: 'CBus',
+    name: 'C-Bus ',
     manufacturer: 'DamianFlynn.com',
     model: 'C-Bus C-Gate MQTT Bridge',
-    sw_version: '0.3',
+    sw_version: '0.4',
     via_device: `cbus2-mqtt`
   };
   let payload = {};
