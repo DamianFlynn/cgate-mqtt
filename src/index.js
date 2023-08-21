@@ -522,8 +522,9 @@ function readXmlFile(filePath) {
             sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, '254', "56", groupAddress, group.TagName[0], groupElement.output, groupElement.unitName, groupElement.unitAddress, groupElement.isDimmer ? 'Dimmer' : 'Relay', groupElement.unitCatalogNumber);
           }
         } else {
-          console.log(`!!! Group [${groupAddress}] tagged as '${group.TagName[0]}'  was not found in list of Group Elements`);
-          sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, '254', "56", groupAddress, group.TagName[0]);
+          // Phantom Groups are not linked to a Unit
+          console.log(`Group Tag [${group.TagName[0]}] -> 'Relay' pack (Phantom]`);
+          sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, '254', "56", groupAddress, group.TagName[0], "Phantom", "Phantom", "Phantom", 'Relay', "Phantom");
         }
       });
 
