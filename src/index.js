@@ -157,8 +157,7 @@ client.on('connect', function () { // When connected
   started()
 
   // Subscribe to MQTT
-  client.subscribe(topicPrefix + 'cbus/write/#', function () {
-
+  client.subscribe('cbus/#', function () {
     // when a message arrives, do something with it
     client.on('message', function (topicArg, message, packet) {
       if (logging == true) { console.log('Message received on ' + topicArg + ' : ' + message); }
@@ -167,87 +166,136 @@ client.on('connect', function () { // When connected
       if (topicPrefix)
         topic = topic.replace(topicPrefix, "");
       parts = topic.split("/");
-      if (parts.length > 5)
 
-        switch (parts[5].toLowerCase()) {
-
-          // Get updates from all groups
-          case "gettree":
-            treenet = parts[2];
-            cgateCommand.write('TREEXML ' + parts[2] + '\n');
-            break;
-
-          // Get updates from all groups
-          case "discovery":
-            discoverySent = [];
-            cgateCommand.write('GET //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/* level\n');
-            break;
-
-          // Get updates from all groups
-          case "getall":
-            cgateCommand.write('GET //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/* level\n');
-            break;
-
-          // On/Off control
-          case "switch":
-
-            if (message == "ON") {
-              if (logging == true) console.log(`ON Command, ramping: ${isRamping}`);
-              if (!isRamping)
-                cgateCommand.write('ON //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + '\n')
-            };
-            if (message == "OFF") { cgateCommand.write('OFF //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + '\n') };
-            break;
-
-          // Ramp, increase/decrease, on/off control
-          case "ramp":
-            isRamping = true;
-            if (logging == true) console.log('Ramping');
-            setTimeout(ramping, 1000);
-            switch (message.toUpperCase()) {
-              case "INCREASE":
-                eventEmitter.on('level', function increaseLevel(address, level) {
-                  if (address == parts[2] + '/' + parts[3] + '/' + parts[4]) {
-                    cgateCommand.write('RAMP //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' ' + Math.min((level + 26), 255) + ' ' + '\n');
-                    eventEmitter.removeListener('level', increaseLevel);
-                  }
-                });
-                cgateCommand.write('GET //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' level\n');
-
-                break;
-
-              case "DECREASE":
-                eventEmitter.on('level', function decreaseLevel(address, level) {
-                  if (address == parts[2] + '/' + parts[3] + '/' + parts[4]) {
-                    cgateCommand.write('RAMP //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' ' + Math.max((level - 26), 0) + ' ' + '\n');
-                    eventEmitter.removeListener('level', decreaseLevel);
-                  }
-                });
-                cgateCommand.write('GET //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' level\n');
-
-                break;
-
-              case "ON":
-                cgateCommand.write('ON //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + '\n');
-                break;
-              case "OFF":
-                cgateCommand.write('OFF //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + '\n');
-                break;
-              default:
-                var ramp = message.split(",");
-                var num = Math.round(parseInt(ramp[0]) * 255 / 100)
-                if (!isNaN(num) && num < 256) {
-
-                  if (ramp.length > 1) {
-                    cgateCommand.write('RAMP //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' ' + num + ' ' + ramp[1] + '\n');
-                  } else {
-                    cgateCommand.write('RAMP //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' ' + num + '\n');
-                  }
+      cbusAddress = parts[3].split("_").slice(1).join("/");
+      switch (parts[parts.length -1].toLowerCase())  {
+        
+          case "set":
+            console.log(`Set Command :: [${parts[parts.length -2].toLowerCase()}] ${message} for ${cbusAddress} received`);
+            switch (parts[parts.length -2].toLowerCase()) {
+              case "brightness":
+                // The message is for the groups brightness
+                var level = Math.round(parseInt(message) * 255 / 100)
+                if (!isNaN(level) && level < 256) {
+                  cgateCommand.write('RAMP //' + settings.cbusname + '/' + cbusAddress + ' ' + level + '\n');
                 }
+                break;
+
+              default:
+                // Assume the message is for the group topic
+                if (message === "ON") {
+                  // execute logic for state ON
+                  cgateCommand.write('ON //' + settings.cbusname + '/' + cbusAddress + '\n')
+                } else if (message === "OFF") {
+                  // execute logic for state OFF
+                  cgateCommand.write('OFF //' + settings.cbusname + '/' + cbusAddress + '\n');
+                }              
             }
             break;
+
+          // case "brightness":
+          //   // execute logic for brightness
+          //   console.log(`[${parts[4].toLowerCase()}] message for ${cbusAddress} received: ${message}`);
+          //   var ramp = message.split(",");
+          //   var num = Math.round(parseInt(ramp[0]) * 255 / 100)
+          //   if (!isNaN(num) && num < 256) {
+          //   }
+          //   if (ramp.length > 1) {
+          //     cgateCommand.write('RAMP //' + settings.cbusname + '/' + cbusAddress + ' ' + num + ' ' + ramp[1] + '\n');
+          //   } else {
+          //     cgateCommand.write('RAMP //' + settings.cbusname + '/' + cbusAddress + ' ' + num + '\n');
+          //   }
+          //   break;
+          case "transition":
+            // execute logic for transition
+            console.log(`[${parts[4].toLowerCase()}] message for ${cbusAddress} received: ${message}`);
+            break;
           default:
-        }
+            // handle unknown key
+            console.log(`Ignoring [${parts[parts.length -1].toLowerCase()}] "${message}" message for ${topic}`);
+      }
+
+
+   
+        // switch (parts[5].toLowerCase()) {
+
+        //   // Get updates from all groups
+        //   case "gettree":
+        //     treenet = parts[2];
+        //     cgateCommand.write('TREEXML ' + parts[2] + '\n');
+        //     break;
+
+        //   // Get updates from all groups
+        //   case "discovery":
+        //     discoverySent = [];
+        //     cgateCommand.write('GET //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/* level\n');
+        //     break;
+
+        //   // Get updates from all groups
+        //   case "getall":
+        //     cgateCommand.write('GET //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/* level\n');
+        //     break;
+
+        //   // On/Off control
+        //   case "switch":
+
+        //     if (message == "ON") {
+        //       if (logging == true) console.log(`ON Command, ramping: ${isRamping}`);
+        //       if (!isRamping)
+        //         cgateCommand.write('ON //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + '\n')
+        //     };
+        //     if (message == "OFF") { cgateCommand.write('OFF //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + '\n') };
+        //     break;
+
+        //   // Ramp, increase/decrease, on/off control
+        //   case "ramp":
+        //     isRamping = true;
+        //     if (logging == true) console.log('Ramping');
+        //     setTimeout(ramping, 1000);
+        //     switch (message.toUpperCase()) {
+        //       case "INCREASE":
+        //         eventEmitter.on('level', function increaseLevel(address, level) {
+        //           if (address == parts[2] + '/' + parts[3] + '/' + parts[4]) {
+        //             cgateCommand.write('RAMP //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' ' + Math.min((level + 26), 255) + ' ' + '\n');
+        //             eventEmitter.removeListener('level', increaseLevel);
+        //           }
+        //         });
+        //         cgateCommand.write('GET //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' level\n');
+
+        //         break;
+
+        //       case "DECREASE":
+        //         eventEmitter.on('level', function decreaseLevel(address, level) {
+        //           if (address == parts[2] + '/' + parts[3] + '/' + parts[4]) {
+        //             cgateCommand.write('RAMP //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' ' + Math.max((level - 26), 0) + ' ' + '\n');
+        //             eventEmitter.removeListener('level', decreaseLevel);
+        //           }
+        //         });
+        //         cgateCommand.write('GET //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' level\n');
+
+        //         break;
+
+        //       case "ON":
+        //         cgateCommand.write('ON //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + '\n');
+        //         break;
+        //       case "OFF":
+        //         cgateCommand.write('OFF //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + '\n');
+        //         break;
+        //       default:
+        //         var ramp = message.split(",");
+        //         var num = Math.round(parseInt(ramp[0]) * 255 / 100)
+        //         if (!isNaN(num) && num < 256) {
+
+        //           if (ramp.length > 1) {
+        //             cgateCommand.write('RAMP //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' ' + num + ' ' + ramp[1] + '\n');
+        //           } else {
+        //             cgateCommand.write('RAMP //' + settings.cbusname + '/' + parts[2] + '/' + parts[3] + '/' + parts[4] + ' ' + num + '\n');
+        //           }
+        //         }
+        //     }
+        //     break;
+        //   default:
+        // }
     });
   });
 
@@ -298,7 +346,7 @@ event.on('close', function () {
 })
 
 command.on('data', function (data) {
-  // if (logging == true) {console.log('Command data: ' + data);}
+  if (logging == true) {console.log('Command data: ' + data);}
   var lines = (buffer + data.toString()).split("\n");
   buffer = lines[lines.length - 1];
   if (lines.length > 1) {
@@ -315,25 +363,20 @@ command.on('data', function (data) {
 
         var level = parts2[1].split("=");
         if (parseInt(level[1]) == 0) {
-          payload = {
-            state: "OFF",
-            brightness: 0,
-            transition: 0,
-            cbus_source_addreess: uniqueId,
-          }
-          
+          // Light is 'Off'
           eventEmitter.emit('level', address[3] + '/' + address[4] + '/' + address[5], 0);
+          mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "OFF", options, function () { });
+          // mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/source`, uniqueId, options, function () { });
         } else {
-          payload = {
-            state: "ON",
-            brightness: Math.round(parseInt(level[1]) * 100 / 255).toString(),
-            transition: 0,
-            cbus_source_addreess: uniqueId,
-          }
+          // Light is 'On' (Dimmer) 
           eventEmitter.emit('level', address[3] + '/' + address[4] + '/' + address[5], Math.round(parseInt(level[1])));
-
+          //mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "ON", options, function () { });
+          mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/brightness`, Math.round(parseInt(level[1]) * 100 / 255).toString(), options, function () { });
+          mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "ON", options, function () { });
+          // mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/source`, uniqueId, options, function () { });
         }
-        mqttMessage.publish(topicRoot + '/light/' + topicMeta + '/' + uniqueId, JSON.stringify(payload), options, function () { });
+        //mqttMessage.publish(topicRoot + '/light/' + topicMeta + '/' + uniqueId, JSON.stringify(payload), options, function () { });
+        //mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, JSON.stringify(payload), options, function () { });
 
       } else if (parts1[0] == "347") {
         tree += parts1[1] + '\n';
@@ -357,24 +400,24 @@ command.on('data', function (data) {
           let uniqueId = `cbus_${address[3]}_${address[4]}_${address[5]}`;
           var level = parts2[2].split("=");
           if (parseInt(level[1]) == 0) {
-            payload = {
-              state: "OFF",
-              brightness: 0,
-              transition: 0,
-              cbus_source_addreess: uniqueId,
-            }
+            // Light is 'Off'
             eventEmitter.emit('level', address[3] + '/' + address[4] + '/' + address[5], 0);
+            mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "OFF", options, function () { });
+            // mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/source`, uniqueId, options, function () { });
           } else {
-            payload = {
-              state: "ON",
-              brightness: Math.round(parseInt(level[1]) * 100 / 255).toString(),
-              transition: 0,
-              cbus_source_addreess: uniqueId,
-            }
+            // payload = {
+            //   state: "ON",
+            //   brightness: Math.round(parseInt(level[1]) * 100 / 255).toString(),
+            //   transition: 0,
+            //   cbus_source_addreess: uniqueId,
+            // }
             eventEmitter.emit('level', address[3] + '/' + address[4] + '/' + address[5], Math.round(parseInt(level[1])));
-
+            //mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "ON", options, function () { });
+            mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/brightness`, Math.round(parseInt(level[1]) * 100 / 255).toString(), options, function () { });
+            // mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/source`, uniqueId, options, function () { });
           }
-          mqttMessage.publish(topicRoot + '/light/' + topicMeta + '/' + uniqueId, JSON.stringify(payload), options, function () { });
+          //mqttMessage.publish(topicRoot + '/light/' + topicMeta + '/' + uniqueId, JSON.stringify(payload), options, function () { });
+          //mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, JSON.stringify(payload), options, function () { });
 
         }
       }
@@ -386,7 +429,8 @@ command.on('data', function (data) {
 // Add a 'data' event handler for the client socket
 // data is what the server sent to this socket
 event.on('data', function (data) {
-  // if (logging == true) {console.log('Event data: ' + data);}
+  logging=true
+  if (logging == true) {console.log('Event data: ' + data);}
   var parts = data.toString().split(" ");
   let address = parts[2].split("/");
   let uniqueId = `cbus_${address[3]}_${address[4]}_${address[5]}`;
@@ -417,45 +461,64 @@ event.on('data', function (data) {
     
       switch (parts[1]) {
         case "on":
-          payload = {
-            state: "ON",
-            brightness: Math.round(parseInt(parts[3]) * 100 / 255).toString(),
-            transition: 0,
-            cbus_source_addreess: parts[2],
-          }
+          // payload = {
+          //   state: "ON",
+          //   brightness: Math.round(parseInt(parts[3]) * 100 / 255).toString(),
+          //   transition: 0,
+          //   cbus_source_addreess: parts[2],
+          // }
+          //mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "ON", options, function () { });
+          // mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/source`, parts[2], options, function () { });
+          // mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/brightness`, Math.round(parseInt(parts[3]) * 100 / 255), options, function () { });
+          mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "ON", options, function () { });
           break;
 
         case "off":
-          payload = {
-            state: "OFF",
-            brightness: 0,
-            transition: 0,
-            cbus_source_addreess: parts[2],
-          }
+          // payload = {
+          //   state: "OFF",
+          //   brightness: 0,
+          //   transition: 0,
+          //   cbus_source_addreess: parts[2],
+          // }
+          mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "OFF", options, function () { });
+          // mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/source`, parts[2], options, function () { });
+          //mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/brightness`, 0, options, function () { });
+          
           break;
 
         case "ramp":
           if (parseInt(parts[3]) > 0) {
-            payload = {
-              state: "ON",
-              brightness: Math.round(parseInt(parts[3]) * 100 / 255).toString(),
-              transition: 0,
-              cbus_source_addreess: parts[2],
-            }
+            // payload = {
+            //   state: "ON",
+            //   brightness: Math.round(parseInt(parts[3]) * 100 / 255).toString(),
+            //   transition: 0,
+            //   cbus_source_addreess: parts[2],
+            // }
+            //mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "ON", options, function () { });
+            // mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/source`, parts[2], options, function () { });
+            mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/brightness`, Math.round(parseInt(parts[3]) * 100 / 255).toString(), options, function () { });
+            mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "ON", options, function () { });
+      
           } else {
-            payload = {
-              state: "OFF",
-              brightness: 0,
-              transition: 0,
-              cbus_source_addreess: parts[2],
-            }
+            // payload = {
+            //   state: "OFF",
+            //   brightness: 0,
+            //   transition: 0,
+            //   cbus_source_addreess: parts[2],
+            // }
+          
+            mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/state`, "OFF", options, function () { });
+            // mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/source`, parts[2], options, function () { });
+            //mqttMessage.publish(`${topicRoot}/light/${topicMeta}/${uniqueId}/brightness`, 0, options, function () { });
           }
+    
           break;
         default:
+          console.log (`Ignoring [${topicRoot}] C-Bus message for ${uniqueId}` )
       }
 
-      if (logging == true) { console.log('C-Bus Light status: ' + uniqueId + ': ' + JSON.stringify(payload) ); }
-      mqttMessage.publish(topicRoot + '/light/' + topicMeta + '/' + uniqueId, JSON.stringify(payload), options, function () { });
+      // if (logging == true) { console.log('C-Bus Light status: ' + uniqueId + ': ' + JSON.stringify(payload) ); }
+      //mqttMessage.publish(topicRoot + '/light/' + topicMeta + '/' + uniqueId, JSON.stringify(payload), options, function () { });
       break;
 
     default:
@@ -506,19 +569,25 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, TagNam
       break;
     
     case "light":
+
       payload = {
         name: `${TagName}`,
         unique_id: `${uniqueId}`,
-        state_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[state]
+        object_id: `${uniqueId}`,
+        state_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}/state`, // [cbus]/[light]/[cbus_254_54_01]/[state]
         command_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}/set`, // [cbus]/[light]/[cbus_254_54_01]/[set]
-        qos: 0,
-        payload_on: "ON",
-        payload_off: "OFF",
-        optimistic: false,
+        //qos: 0,
+        //payload_on: "ON",
+        //payload_off: "OFF",
+        //optimistic: false,
+        brightness: false,
         icon: "mdi:lightbulb-on",
         device: {
           identifiers: [`${topicMeta}`],
+          //identifiers: [`${uniqueId}`],
           name: 'CBus',
+          //name: `My ${TagName}`,
+          connections: [["cbus_network_address", `//HOME/${networkId}/${serviceId}/${groupId}`]],
           manufacturer: 'DamianFlynn.com',
           model: 'C-Bus C-Gate MQTT Bridge',
           sw_version: '0.3',
@@ -526,11 +595,39 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, TagNam
         }
       }
       if (outputType == "Dimmer") {
-        payload.brightness_state_topic = `${topicRoot}/${deviceClass}/${uniqueId}/brightness`; 
-        payload.brightness_command_topic = `${topicRoot}/${deviceClass}/${uniqueId}/brightness/set`;
+        payload.brightness_state_topic = `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}/brightness`; 
+        payload.brightness_command_topic = `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}/brightness/set`;
         payload.brightness_scale = 100;
-        icon: "mdi:lightbulb-on-50";
+        payload.brightness = true;
+        payload.on_command_type = "brightness"
+        payload.icon = "mdi:lightbulb-on-50";
       }
+    
+      // payload = {
+      //   name: `${TagName}`,
+      //   unique_id: `${uniqueId}`,
+      //   state_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[state]
+      //   command_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}/set`, // [cbus]/[light]/[cbus_254_54_01]/[set]
+      //   qos: 0,
+      //   payload_on: "ON",
+      //   payload_off: "OFF",
+      //   optimistic: false,
+      //   icon: "mdi:lightbulb-on",
+      //   device: {
+      //     identifiers: [`${topicMeta}`],
+      //     name: 'CBus',
+      //     manufacturer: 'DamianFlynn.com',
+      //     model: 'C-Bus C-Gate MQTT Bridge',
+      //     sw_version: '0.3',
+      //     via_device: `${topicMeta}`
+      //   }
+      // }
+      // if (outputType == "Dimmer") {
+      //   payload.brightness_state_topic = `${topicRoot}/${deviceClass}/${uniqueId}/brightness`; 
+      //   payload.brightness_command_topic = `${topicRoot}/${deviceClass}/${uniqueId}/brightness/set`;
+      //   payload.brightness_scale = 100;
+      //   icon: "mdi:lightbulb-on-50";
+      // }
       
           // outputChannel, unitName, unitAddress, outputType
           //identifiers: [uniqueId],
@@ -545,30 +642,30 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, TagNam
       mqttTopic = `homeassistant/light/${topicMeta}/${uniqueId}/${topicConfig}`;
       break;
 
-    case "switch":
-      payload = {
-        name: `${uniqueId}`,
-        unique_id: `${uniqueId}`,
-        state_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[state]
-        command_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[set]
-        qos: 0,
-        payload_on: "ON",
-        payload_off: "OFF",
-        optimistic: false,
+    // case "switch":
+    //   payload = {
+    //     name: `${uniqueId}`,
+    //     unique_id: `${uniqueId}`,
+    //     state_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[state]
+    //     command_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}`, // [cbus]/[light]/[cbus_254_54_01]/[set]
+    //     qos: 0,
+    //     payload_on: "ON",
+    //     payload_off: "OFF",
+    //     optimistic: false,
         
-        device: {
-          identifiers: [uniqueId],
-          name: uniqueId,
-          manufacturer: "Clipsal",
-          model: "C-Bus Lighting Application",
-          connections: ['cbus_address', `${networkId}/${serviceId}/${groupId}`],
-          via_device: `${topicMeta}` 
-        }
-      }
-      // [homeassistant]/[light]/[cbus-mqtt]/[cbus_254_54_01]/[config]
-      mqttTopic = `homeassistant/${deviceClass}/${topicMeta}/${uniqueId}/${topicConfig}`;  
+    //     device: {
+    //       identifiers: [uniqueId],
+    //       name: uniqueId,
+    //       manufacturer: "Clipsal",
+    //       model: "C-Bus Lighting Application",
+    //       connections: ['cbus_address', `${networkId}/${serviceId}/${groupId}`],
+    //       via_device: `${topicMeta}` 
+    //     }
+    //   }
+    //   // [homeassistant]/[light]/[cbus-mqtt]/[cbus_254_54_01]/[config]
+    //   mqttTopic = `homeassistant/${deviceClass}/${topicMeta}/${uniqueId}/${topicConfig}`;  
 
-      break;
+    //   break;
 
     case "button":
       payload = {
