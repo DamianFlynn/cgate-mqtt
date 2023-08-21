@@ -37,6 +37,7 @@ var isRamping = false;
 
 
 var discoverySent = [];
+var triggerActions = [];
 var HASS_DEVICE_CLASSES = {
   LIGHT: "light",
   RELAY: "switch",
@@ -318,10 +319,25 @@ function handleTriggerEvent(parts, uniqueId) {
   if (logging === true) {
     console.log(`C-Bus trigger received: ${uniqueId}`);
   }
+
+
+  // JSON.stringify(parts)
+  // ["trigger","event","//HOME/254/202/1","3","#sourceunit=13","OID=00191050-2250-103c-89a3-c02bb44ff242\r\n"]
+  
+  
+  //  = {
+  //   tagName: level.TagName[0],
+  //   triggerName: triggerTagName,
+  //   triggerAddress: triggerAddress
+  // };
+
+  const sourceunit = parts[4].split('&').find(param => param.startsWith('sourceunit='));
   const payload = {
-    event_type: "hold"
+    event_type: triggerActions[parseInt(parts[3], 10)].tagName,
+    trigger_unit: sourceunit ? sourceunit.split('=')[1] : null
   };
-  mqttMessage.publish(`cbus/binary_sensor/cbus2-mqtt/${uniqueId}/state`, JSON.stringify(payload), options, function () { });
+
+  mqttMessage.publish(`cbus/event/cbus2-mqtt/${uniqueId}/state`, payload, options, function () { });
 }
 
 function handleLightingEvent(parts, uniqueId) {
@@ -377,6 +393,13 @@ function handleParsedTree(result) {
   }
   tree = '';
 }
+
+function getTagNamesByTriggerAddress(triggerActions, triggerAddress) {
+  const filteredActions = triggerActions.filter(action => action.triggerAddress === triggerAddress);
+  const tagNames = filteredActions.map(action => action.tagName);
+  return tagNames;
+}
+
 
 function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagName, outputChannel, unitName, unitAddress, outputType, unitCatalogNumber, eventTypes) {
   const uniqueId = deviceClass === 'device' ? `cbus_${settings.cbusname}` : `cbus_${networkId}_${serviceId}_${groupId}`;
@@ -449,10 +472,10 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
         device,
         device_class: "button",
         event_types: eventTypes || ["SINGLE", "DOUBLE", "LONG"], // use default value if eventTypes is null
-        state_topic: `cbus/binary_sensor/${mqttTopicSuffix}/${uniqueId}/state`,
+        state_topic: `cbus/event/${mqttTopicSuffix}/${uniqueId}/state`,
         icon: eventTypes ? "mdi:gesture-double-tap" : "mdi:gesture-tap"
       };
-      mqttTopic = `${mqttTopicPrefix}/binary_sensor/${mqttTopicSuffix}/${uniqueId}/config`;
+      mqttTopic = `${mqttTopicPrefix}/event/${mqttTopicSuffix}/${uniqueId}/config`;
       break;
     default:
       return;
@@ -534,14 +557,19 @@ function readXmlFile(filePath) {
           const triggerAddress = parseInt(trigger.Address[0], 10);
           const triggerTagName = trigger.TagName[0];
           if (trigger.Level) {
-            var levelEventTypes = [];
             trigger.Level.forEach(level => {
-              const levelTagName = level.TagName[0];
-              const levelAddress = level.Address[0];
-              levelEventTypes.push(levelTagName)
+              const levelAddress = parseInt(level.Address[0], 10);
+              triggerActions[levelAddress] = {
+                tagName: level.TagName[0],
+                triggerName: triggerTagName,
+                triggerAddress: triggerAddress
+              };
             });
-            console.log(`Trigger (${triggerAddress}) ${triggerTagName} has ${levelEventTypes.length} levels ${JSON.stringify(levelEventTypes)}`);
-            sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, '254', "202", triggerAddress, triggerTagName,null ,null,null ,null ,null, levelEventTypes );
+            
+            const tagNames = getTagNamesByTriggerAddress(triggerActions, triggerAddress).map(tagName => `${tagName}`);
+
+            console.log(`Trigger (${triggerAddress}) ${triggerTagName} has ${tagNames.length} levels ${JSON.stringify(tagNames)}`);
+            sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, '254', "202", triggerAddress, triggerTagName,null ,null,null ,null ,null, tagNames );
           } else {
             console.log(`Trigger (${triggerAddress}) ${triggerTagName} does not have any levels`);
           }
