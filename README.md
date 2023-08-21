@@ -4,7 +4,7 @@
 
 The C-Bus to MQTT Bridge is a Node.js application that allows you to bridge C-Bus lighting control data to MQTT messages. This enables seamless integration of C-Bus lighting control with home automation systems that support MQTT communication.
 
-This is a fork of the great work of the1laz and natemason.
+Based on the original fork [the1laz](https://github.com/the1laz/cgateweb)
 
 ## Installation
 
