@@ -101,8 +101,6 @@ var mqttMessage = {
       mqttClient.publish(msg.topic, msg.payload, { retain: true }, (err) => {
         if (err) {
           console.error('Failed to publish message:', err);
-        } else {
-          console.log('Message published with retain flag set to true');
         }
       });
     }
@@ -133,7 +131,7 @@ mqttClient.on('connect', () => {
       return;
     }
     mqttClient.on('message', (topicArg, message, packet) => {
-      handleMessage(topicArg, message);
+      handleMqttMessage(topicArg, message);
     });
   });
   mqttClient.publish('cbus/bridge/cbus2-mqtt/state', 'online', options, (err) => {
@@ -275,7 +273,7 @@ function started() {
 }
 
 
-function handleMessage(topicArg, message) {
+function handleMqttMessage(topicArg, message) {
   if (logging === true) {
     console.log(`Message received on ${topicArg}: ${message}`);
   }
@@ -317,16 +315,13 @@ function handleMessage(topicArg, message) {
 
 
 function handleTriggerEvent(parts, uniqueId) {
-  if (settings.enableHassDiscovery) {
-    sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, parts[2], parts[3], parts[4]);
-  }
   if (logging === true) {
     console.log(`C-Bus trigger received: ${uniqueId}`);
   }
   const payload = {
     event_type: "hold"
   };
-  mqttMessage.publish(`cbus/sensor/cbus2-mqtt/${uniqueId}/state`, JSON.stringify(payload), options, function () { });
+  mqttMessage.publish(`cbus/binary_sensor/cbus2-mqtt/${uniqueId}/state`, JSON.stringify(payload), options, function () { });
 }
 
 function handleLightingEvent(parts, uniqueId) {
@@ -383,7 +378,7 @@ function handleParsedTree(result) {
   tree = '';
 }
 
-function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagName, outputChannel, unitName, unitAddress, outputType, unitCatalogNumber) {
+function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagName, outputChannel, unitName, unitAddress, outputType, unitCatalogNumber, eventTypes) {
   const uniqueId = deviceClass === 'device' ? `cbus_${settings.cbusname}` : `cbus_${networkId}_${serviceId}_${groupId}`;
   if (discoverySent.includes(uniqueId)) {
     return;
@@ -393,7 +388,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
   }
   const mqttTopicPrefix = 'homeassistant';
   const mqttTopicSuffix = 'cbus2-mqtt';
-  const mqttTopic = `${mqttTopicPrefix}/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/config`;
+  var mqttTopic = `${mqttTopicPrefix}/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/config`;
   const device = {
     identifiers: [`cbus2-mqtt`],
     name: 'C-Bus ',
@@ -445,22 +440,19 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
       break;
     case "button":
       payload = {
-        name: `${uniqueId}`,
+        name: `${tagName}`,
         unique_id: `${uniqueId}`,
-        availability_topic: "cbus/PLC/House/availability",
+        object_id: `${uniqueId}`,
+        availability_topic: "cbus/bridge/cbus2-mqtt/state",
         payload_available: "online",
         payload_not_available: "offline",
         device,
         device_class: "button",
-        event_types: [
-          "SINGLE",
-          "DOUBLE",
-          "LONG"
-        ],
-        state_topic: `cbus/read/${networkId}/${serviceId}/${groupId}/state`,
-        icon: "mdi:gesture-double-tap",
-        qos: 2
+        event_types: eventTypes || ["SINGLE", "DOUBLE", "LONG"], // use default value if eventTypes is null
+        state_topic: `cbus/binary_sensor/${mqttTopicSuffix}/${uniqueId}/state`,
+        icon: eventTypes ? "mdi:gesture-double-tap" : "mdi:gesture-tap"
       };
+      mqttTopic = `${mqttTopicPrefix}/binary_sensor/${mqttTopicSuffix}/${uniqueId}/config`;
       break;
     default:
       return;
@@ -524,16 +516,39 @@ function readXmlFile(filePath) {
         const groupElement = groupElements[groupAddress];
         if (groupElement) {
           groupElement.tagName = group.TagName[0];
-          console.log(`TagName: Pack (${groupElement.unitAddress}) ${groupElement.unitName} [${groupElement.output}], Type: ${groupElement.isDimmer ? 'Dimmer' : 'Relay'} -> ${group.TagName[0]}`);
+          console.log(`Group Tag [${group.TagName[0]}] -> ${groupElement.isDimmer ? 'Dimmer' : 'Relay'} pack (${groupElement.unitAddress}) ${groupElement.unitName} [${groupElement.output}]`);
           if (settings.enableHassDiscovery) {
             // Now Publish the MQTT Discovery Messages
             sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, '254', "56", groupAddress, group.TagName[0], groupElement.output, groupElement.unitName, groupElement.unitAddress, groupElement.isDimmer ? 'Dimmer' : 'Relay', groupElement.unitCatalogNumber);
           }
         } else {
           console.log(`!!! Group [${groupAddress}] tagged as '${group.TagName[0]}'  was not found in list of Group Elements`);
+          sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, '254', "56", groupAddress, group.TagName[0]);
         }
       });
 
+      const triggerGroups = result.Installation.Project[0].Network[0].Application.find(app => app.Address[0] === '202').Group;
+      if (triggerGroups) {
+        triggerGroups.forEach(trigger => {
+          const triggerAddress = parseInt(trigger.Address[0], 10);
+          const triggerTagName = trigger.TagName[0];
+          if (trigger.Level) {
+            var levelEventTypes = [];
+            trigger.Level.forEach(level => {
+              const levelTagName = level.TagName[0];
+              const levelAddress = level.Address[0];
+              levelEventTypes.push(levelTagName)
+            });
+            console.log(`Trigger (${triggerAddress}) ${triggerTagName} has ${levelEventTypes.length} levels ${JSON.stringify(levelEventTypes)}`);
+            sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, '254', "202", triggerAddress, triggerTagName,null ,null,null ,null ,null, levelEventTypes );
+          } else {
+            console.log(`Trigger (${triggerAddress}) ${triggerTagName} does not have any levels`);
+          }
+        });
+      } else {
+        console.log('triggerGroups is undefined');
+      }
+      
       if (logging == true) { console.log(`Group Elements: ${JSON.stringify(groupElements)}`) };
     });
   });
