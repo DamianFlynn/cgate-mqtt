@@ -75,6 +75,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
+      - name: downcase REPO
+        run: |
+          echo "REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
       - name: Build and push Docker image
@@ -91,6 +95,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/arm64, linux/amd64
           tags: |
-            latest
-            ${{steps.version.outputs.date_version}}
+            ghcr.io/${{env.REPO}}:latest
+            ghcr.io/${{env.REPO}}:${{steps.version.outputs.date_version}}
             ${{ steps.meta.outputs.tags }}
+
