@@ -193,19 +193,7 @@ client.on('connect', function () { // When connected
             }
             break;
 
-          // case "brightness":
-          //   // execute logic for brightness
-          //   console.log(`[${parts[4].toLowerCase()}] message for ${cbusAddress} received: ${message}`);
-          //   var ramp = message.split(",");
-          //   var num = Math.round(parseInt(ramp[0]) * 255 / 100)
-          //   if (!isNaN(num) && num < 256) {
-          //   }
-          //   if (ramp.length > 1) {
-          //     cgateCommand.write('RAMP //' + settings.cbusname + '/' + cbusAddress + ' ' + num + ' ' + ramp[1] + '\n');
-          //   } else {
-          //     cgateCommand.write('RAMP //' + settings.cbusname + '/' + cbusAddress + ' ' + num + '\n');
-          //   }
-          //   break;
+
           case "transition":
             // execute logic for transition
             console.log(`[${parts[4].toLowerCase()}] message for ${cbusAddress} received: ${message}`);
@@ -429,7 +417,6 @@ command.on('data', function (data) {
 // Add a 'data' event handler for the client socket
 // data is what the server sent to this socket
 event.on('data', function (data) {
-  logging=true
   if (logging == true) {console.log('Event data: ' + data);}
   var parts = data.toString().split(" ");
   let address = parts[2].split("/");
@@ -576,6 +563,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, TagNam
         object_id: `${uniqueId}`,
         state_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}/state`, // [cbus]/[light]/[cbus_254_54_01]/[state]
         command_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}/set`, // [cbus]/[light]/[cbus_254_54_01]/[set]
+        json_attributes_topic: `${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}/attributes`, // [cbus]/[light]/[cbus_254_54_01]/[state]
         //qos: 0,
         //payload_on: "ON",
         //payload_off: "OFF",
@@ -602,7 +590,14 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, TagNam
         payload.on_command_type = "brightness"
         payload.icon = "mdi:lightbulb-on-50";
       }
-    
+      attributes = {
+        cbus_address: `${networkId}/${serviceId}/${groupId}`,
+        unit_name: `${unitName}`,
+        unit_address: `${unitAddress}`,
+        unit_type: `${outputType}`,
+        output_channel: `${outputChannel}`
+      }
+      mqttMessage.publish(`${topicRoot}/${deviceClass}/${topicMeta}/${uniqueId}/attributes`, JSON.stringify(attributes));
       // payload = {
       //   name: `${TagName}`,
       //   unique_id: `${uniqueId}`,
