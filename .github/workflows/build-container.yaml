@@ -91,6 +91,6 @@ jobs:
           file: ./Dockerfile
           platforms: linux/arm64, linux/amd64
           tags: |
-            ghcr.io/${{github.repository}}:latest
-            ghcr.io/${{github.repository}}:${{steps.version.outputs.date_version}}
+            latest
+            ${{steps.version.outputs.date_version}}
             ${{ steps.meta.outputs.tags }}
