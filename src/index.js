@@ -583,4 +583,3 @@ function readXmlFile(filePath) {
   });
 }
 
-
