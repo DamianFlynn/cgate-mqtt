@@ -1,19 +1,19 @@
 
 //cbus ip address
-exports.cbusip = '127.0.0.1';
+exports.cbusip = '172.16.1.128';
 
 
 //cbus project name
 exports.cbusname = "HOME";
 
 //mqtt server ip:port
-exports.mqtt = '127.0.0.1:1883';
+exports.mqtt = '172.16.1.70:1883';
 
 exports.topicPrefix = "homeassistant"
 exports.enableHassDiscovery = true;
 //username and password (unncomment to use)
-exports.mqttusername = 'cbus';
-exports.mqttpassword = 'Password!';
+exports.mqttusername = 'hass';
+exports.mqttpassword = 'Prax1an!';
 
 // net and app for automatically requesting values
 exports.getallnetapp = '254/56';
