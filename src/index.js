@@ -14,10 +14,10 @@ if (settings.retainreads === true) {
   options.retain = true;
 }
 
-var topicPrefix = "";
-if (settings.topicPrefix) {
-  topicPrefix = `${settings.topicPrefix}/`;
-}
+// var topicPrefix = "";
+// if (settings.topicPrefix) {
+//   topicPrefix = `${settings.topicPrefix}/`;
+// }
 
 
 var tree = '';
@@ -279,9 +279,9 @@ function handleMqttMessage(topicArg, message) {
     console.log(`Message received on ${topicArg}: ${message}`);
   }
   let topic = topicArg;
-  if (topicPrefix) {
-    topic = topic.replace(topicPrefix, "");
-  }
+  // if (topicPrefix) {
+  //   topic = topic.replace(topicPrefix, "");
+  // }
   const parts = topic.split("/");
   const cbusAddress = parts[3].split("_").slice(1).join("/");
   switch (parts[parts.length - 1].toLowerCase()) {
@@ -536,7 +536,9 @@ function readXmlFile(filePath) {
         } else {
           // Phantom Groups are not linked to a Unit
           console.log(`Group Tag [${group.TagName[0]}] -> 'Relay' pack (Phantom]`);
-          sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, '254', "56", groupAddress, group.TagName[0], "Phantom", "Phantom", "Phantom", 'Relay', "Phantom");
+          if (settings.enableHassDiscovery) {
+            sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, '254', "56", groupAddress, group.TagName[0], "Phantom", "Phantom", "Phantom", 'Relay', "Phantom");
+          }
         }
       });
 
@@ -558,7 +560,9 @@ function readXmlFile(filePath) {
             const tagNames = getTagNamesByTriggerAddress(triggerActions, triggerAddress).map(tagName => `${tagName}`);
 
             console.log(`Trigger (${triggerAddress}) ${triggerTagName} has ${tagNames.length} levels ${JSON.stringify(tagNames)}`);
-            sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, '254', "202", triggerAddress, triggerTagName,null ,null,null ,null ,null, tagNames );
+            if (settings.enableHassDiscovery) {
+              sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, '254', "202", triggerAddress, triggerTagName,null ,null,null ,null ,null, tagNames );
+            }
           } else {
             console.log(`Trigger (${triggerAddress}) ${triggerTagName} does not have any levels`);
           }

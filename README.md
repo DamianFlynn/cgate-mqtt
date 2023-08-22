@@ -1,35 +1,41 @@
 
+# C-Gate to MQTT Bridge for CBUS Integration
 
-# C-Bus to MQTT Bridge
+The C-Gate to MQTT Bridge project offers a powerful solution for seamlessly integrating Clipsal CBUS PLCs with MQTT-enabled IoT devices and services. This repository provides the necessary code and comprehensive instructions to deploy and configure the C-Gate to MQTT Bridge. The application goes beyond basic integration by incorporating MQTT Discovery for Home Assistant, enabling automatic device recognition and configuration.
 
-The C-Bus to MQTT Bridge is a Node.js application that allows you to bridge C-Bus lighting control data to MQTT messages. This enables seamless integration of C-Bus lighting control with home automation systems that support MQTT communication.
+The code is based on the original fork [the1laz](https://github.com/the1laz/cgateweb)
+## Purpose
 
-Based on the original fork [the1laz](https://github.com/the1laz/cgateweb)
+This project aims to establish a bridge between the Clipsal C-Gate Server and MQTT, unlocking the potential for real-time, bi-directional communication between CBUS PLCs and various IoT platforms. By supporting MQTT Discovery for Home Assistant, the project simplifies the process of integrating CBUS devices into Home Assistant's ecosystem, enhancing automation and control capabilities.
 
-## Installation
+## Features
 
-1. Clone this repository to your local machine.
-2. Navigate to the project directory.
+- **Seamless CBUS Integration:** The C-Gate to MQTT Bridge connects CBUS PLCs with MQTT brokers, facilitating real-time communication and control.
+- **MQTT Discovery for Home Assistant:** The application supports MQTT Discovery, automatically configuring CBUS devices within Home Assistant as Dimmers, Switches, or Phantoms.
+- **Trigger Application Support:** The project includes support for CBUS Trigger applications, enabling Home Assistant to identify and respond to triggered events.
+- **Flexible Configuration:** Users can customize the application's settings to align with their specific CBUS setup and MQTT broker.
 
-### Docker
 
-The included `Dockerfile` can be used to create a container for the project
+### CBUS Lighting and Trigger Applications
 
-```bash
-docker build -t cgate-mqtt:latest .
-```
+1. Configure CBUS Toolkit with MQTT Discovery information for lighting devices.
+1. Run the C-Gate to MQTT Bridge, connecting it to your C-Gate Server and MQTT broker.
+1. Home Assistant will automatically recognize lighting devices and configure them as Dimmers, Switches, or Phantoms.
+1. When CBUS trigger applications are fired, Home Assistant will receive MQTT Events and can respond accordingly.
+1. Use Home Assistant to control CBUS lighting devices.
 
-```bash
-docker create \
-    --name cgate-mqtt \
-    -v path/to/settings.js:/usr/src/settings.js \
-    --restart unless-stopped \
-    cgate-mqtt:latest
-```
 
-### Docker Compose
+## Usage
+
+You can easily and quickly get your C-Bus connected to MQTT, by implementing the following stack.
+
+* [ser2sock](https://github.com/DamianFlynn/ser2sock): Serial Port to TCP Socket proxy, Optional to implement, supports USB to Serial Adaptors
+* [cgate-server](https://github.com/DamianFlynn/cgate-server): Clipsal C-Gate server, can be configured to connect directly to CNI or via `ser2sock`. Recommended as this allows for the C-Bus toolkit to be used remotely in parallel
+* cgate-mqtt: Bridge C-Bus Applications to MQTT. MQTT can be integrated into many platforms including Home Assistant
+
+The following `docker-compose.yaml` file will load and run the complete stack. You just need to configure each application as directed.
+
 ```yaml
----
 version: '3.8'
 
 x-disabled:
@@ -39,7 +45,7 @@ services:
   # CNI Serial port (RS232 to USB) to TCP 10001
   ser2sock:
     hostname: "ser2sock"
-    image: ser2sock:latest
+    image: ghcr.io/damianflynn/ser2sock:latest
     container_name: ser2sock
     restart: unless-stopped
     networks:
@@ -57,7 +63,7 @@ services:
   # Clipsal C-Bus C-Gate Server
   cgate-server:
     hostname: "cgate-server"
-    image: cgate-server:latest
+    image: ghcr.io/damianflynn/cgate-server:latest
     container_name: cgate-server
     depends_on:
       - ser2sock
@@ -78,7 +84,7 @@ services:
   # C-Gate to MQTT Bridge
   cgate-mqtt:
     hostname: "cgate-mqtt"
-    image: cgate-mqtt:latest
+    image: ghcr.io/damianflynn/cgate-mqtt:latest
     container_name: cgate-mqtt
     restart: unless-stopped
     networks:
@@ -87,6 +93,7 @@ services:
       - cgate-server
     volumes:
       - /opt/appdata/cbus/settings.js:/usr/src/app/settings.js
+      - /opt/appdata/cbus/tags/CBUS-PROJECT.xml:/usr/src/app/HOME.xml
 
 
 networks:
@@ -95,31 +102,6 @@ networks:
     external: true
 ```
 
-### Local Installation
-
-Install the required Node.js packages using the following command:
-
-```bash
-npm install
-```
-
-Configure the settings in the `settings.js` file to match your environment.
-Run the application using the following command:
-
-```bash
-node <path-to-your-app>/app.js
-```
-
-## Dependencies
-
-The following Node.js packages are used in this project:
-
-- `mqtt`: MQTT client library for Node.js.
-- `net`: Provides networking functionality.
-- `events`: Provides event handling capabilities.
-- `xml2js`: XML to JavaScript object converter.
-- `fs`: Provides file system-related functionality.
-- `path`: Provides utilities for working with file and directory paths.
 
 ## Configuration
 
@@ -138,6 +120,95 @@ Modify the `settings.js` file to configure the following options:
 - `getallonstart`: Get all values on startup.
 - `getallperiod`: Period for getting all values.
 
+This is my current `settings.js` 
+
+```js
+//Ser2Sock IP Address
+exports.cbusip = '172.100.10.100';
+
+//cbus project name
+exports.cbusname = "HOME";
+
+//mqtt server ip:port (my Home Assistant MQTT Broker)
+exports.mqtt = '172.100.10.110:1883';
+exports.mqttusername = 'cbus';
+exports.mqttpassword = 'Password!';
+
+// Map the C-Bus project information to Home Assistant Discovery Messages
+exports.enableHassDiscovery = true;
+
+// These should not need to be changed
+exports.getallonstart = true;
+exports.getallnetapp = '254/56';
+exports.getallperiod = 60*15;
+exports.retainreads = true;
+exports.messageinterval = 200;
+
+//logging
+exports.logging = false;
+```
+
+### C-Bus Project Configuration
+
+The application supports parsing C-Bus project configuration from XML files. 
+The C-Bus Project file (XML only currently) should be mapped to the container as follows
+
+```yaml
+    volumes:
+      - /opt/appdata/cbus/tags/CBUS-PROJECT.xml:/usr/src/app/HOME.xml
+```
+
+In this case, my project file is stored on the disk as `/opt/appdata/cbus/tags/CBUS-PROJECT.xml` and is mapped into the container. You should edit this to match your own project file.
+Note: The suffix  `:/usr/src/app/HOME.xml`  should not be changed currently for the application to correctly locate the project
+
+
+## Building
+
+1. Clone this repository to your local machine.
+2. Navigate to the project directory.
+
+### Docker
+
+The included `Dockerfile` can be used to create a container for the project
+
+```bash
+docker build -t cgate-mqtt:latest .
+```
+
+```bash
+docker create \
+    --name cgate-mqtt \
+    -v path/to/settings.js:/usr/src/settings.js \
+    --restart unless-stopped \
+    cgate-mqtt:latest
+```
+### Local Installation
+
+Install the required Node.js packages using the following command:
+
+```bash
+npm install
+```
+
+Configure the settings in the `settings.js` file to match your environment.
+Run the application using the following command:
+
+```bash
+node <path-to-your-app>/app.js
+```
+
+#### Dependencies
+
+The following Node.js packages are used in this project:
+
+- `mqtt`: MQTT client library for Node.js.
+- `net`: Provides networking functionality.
+- `events`: Provides event handling capabilities.
+- `xml2js`: XML to JavaScript object converter.
+- `fs`: Provides file system-related functionality.
+- `path`: Provides utilities for working with file and directory paths.
+
+
 ## Features
 
 - [-] Connects to MQTT broker and C-Gate system.
@@ -151,19 +222,23 @@ Modify the `settings.js` file to configure the following options:
 The application uses MQTT topics for communication. The topics are structured as follows:
 
 - `cbus/bridge/cbus2-mqtt/state`: Bridge online/offline status.
+- `cbus/event/cbus2-mqtt/<unique_id>/state`: Trigger Events.
 - `cbus/light/cbus2-mqtt/<unique_id>/state`: Light state (ON/OFF).
+- `cbus/light/cbus2-mqtt/<unique_id>/set`: Set light state.
 - `cbus/light/cbus2-mqtt/<unique_id>/brightness`: Light brightness (0-100).
-- `cbus/light/cbus2-mqtt/<unique_id>/set`: Set light state or brightness.
-- `cbus/sensor/cbus2-mqtt/<unique_id>/state`: Sensor state (hold event).
+- `cbus/light/cbus2-mqtt/<unique_id>/brightness/set`: Set Light brightness (0-100).
+- `cbus/light/cbus2-mqtt/<unique_id>/attributes`: C-Bus attributes for the group in JSON package, can also be seen in Home Assistant
+  `{"cbus_address":"254/56/3","unit_name":"DIM1A-01","unit_address":"0x3","unit_type":"Dimmer","unit_model":"L5508D1A","output_channel":"3"}`
 
-## C-Bus Project Configuration
-
-The application supports parsing C-Bus project configuration from XML files. Use the `readXmlFile` function in `app.js` to read the project configuration. Configure the `HOME.xml` file path in the `readXmlFile` function.
 
 ## Troubleshooting
 
-- If you encounter any issues, refer to the console logs for more information.
+- If you encounter any issues, enable detail logging and refer to the console logs for more information.
 - Check the configuration settings in `settings.js`.
+
+## Conclusion
+
+The C-Gate to MQTT Bridge project is a comprehensive solution for seamlessly integrating Clipsal CBUS PLCs with MQTT-enabled IoT devices and services. By facilitating real-time communication, MQTT Discovery, and support for trigger applications, this application enhances the automation and control capabilities of CBUS systems within the larger IoT ecosystem. Through this bridge, users can unlock new possibilities for managing their CBUS lighting and trigger applications.
 
 ## Contributions
 
