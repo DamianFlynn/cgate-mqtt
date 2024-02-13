@@ -9,6 +9,12 @@ const fs = require('fs');
 const path = require('path');
 const xml2js = require('xml2js');
 
+// Import package.json
+var package = require('./package.json');
+
+// Print startup banner
+console.log(`Starting ${package.name} ... Version: ${package.version}`);
+
 var options = {};
 if (settings.retainreads === true) {
   options.retain = true;
