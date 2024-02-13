@@ -1,6 +1,6 @@
 {
   "name": "cgate-mqtt",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "dependencies": {
     "mqtt": "^5.0.3",

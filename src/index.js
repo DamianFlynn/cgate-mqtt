@@ -47,8 +47,12 @@ var HASS_DEVICE_CLASSES = {
 
 
 // Connect to MQTT Broker
-var mqttClient = mqtt.connect(`mqtt://${settings.mqtt}`, settings.mqttusername && settings.mqttpassword ? { username: settings.mqttusername, password: settings.mqttpassword } : {});
-
+var mqttClient = mqtt.connect(`mqtt://${settings.mqtt}`, {
+  username: settings.mqttusername,
+  password: settings.mqttpassword,
+  reconnect: true, // Enable automatic reconnection
+  reconnectPeriod: 1000 // Reconnect every 1 second
+});
 
 var cbusCmdChannel = new net.Socket();
 var cbusEventChannel = new net.Socket();
@@ -121,6 +125,13 @@ mqttClient.on('disconnect', () => {
   mqttConnected = false;
 });
 
+mqttClient.on('offline', () => {
+  console.log('MQTT client is offline. Attempting to reconnect...');
+});
+
+mqttClient.on('reconnect', () => {
+  console.log('MQTT client is reconnecting...');
+});
 
 mqttClient.on('connect', () => {
   mqttConnected = true;
