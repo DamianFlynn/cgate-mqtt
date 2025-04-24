@@ -337,14 +337,43 @@ function handleTriggerEvent(parts, uniqueId) {
     console.log(`C-Bus trigger received: ${uniqueId}`);
   }
 
-  const sourceunit = parts[4].split('&').find(param => param.startsWith('#sourceunit='));
+  // Try to extract a clean trigger level index
+  const levelIdx = parseInt(parts[3], 10);
+  const sourceunit = (parts.find(p => p.startsWith('#sourceunit=')) || '').split('=')[1] || 'unknown';
+
+  // Guard against undefined tagName to avoid crash
+  if (!triggerActions[levelIdx]) {
+    console.warn(`⚠️  Missing triggerActions[${levelIdx}] for ${uniqueId}`);
+    return;
+  }
+
   const payload = {
-    event_type: triggerActions[parseInt(parts[3], 10)].tagName,
-    trigger_unit: sourceunit ? sourceunit.split('=')[1] : 'unknown'
+    event_type: triggerActions[levelIdx].tagName,
+    trigger_unit: sourceunit
   };
 
-  mqttMessage.publish(`cbus/event/cbus2-mqtt/${uniqueId}/state`, JSON.stringify(payload), options, function () { });
+  mqttMessage.publish(`cbus/event/cbus2-mqtt/${uniqueId}/state`, JSON.stringify(payload), options, function () {});
 }
+
+// Patch developed during a ChatGPT debugging session to
+// prevent crash on malformed C-Bus trigger events:
+// Event data: trigger label //RIZAL4/254/202  1 2 0 F0 1 4D656469756D #sourceunit=21 OID=b99c65f0-0312-103e-b958-bf9a8f1e62b0
+//
+//  C-Bus trigger received: cbus_254_202_undefined
+//  /usr/home/cbus/cgate-mqtt/src/index.js:342
+//      event_type: triggerActions[parseInt(parts[3], 10)].tagName,
+//                                                         ^
+//  
+//  TypeError: Cannot read properties of undefined (reading 'tagName')
+//      at handleTriggerEvent (/usr/home/cbus/cgate-mqtt/src/index.js:342:56)
+//      at Socket.<anonymous> (/usr/home/cbus/cgate-mqtt/src/index.js:254:7)
+//      at Socket.emit (node:events:517:28)
+//      at addChunk (node:internal/streams/readable:368:12)
+//      at readableAddChunk (node:internal/streams/readable:341:9)
+//      at Readable.push (node:internal/streams/readable:278:10)
+//      at TCP.onStreamRead (node:internal/stream_base_commons:190:23)
+//  
+//  Node.js v18.20.8
 
 function handleLightingEvent(parts, uniqueId) {
   switch (parts[1]) {
