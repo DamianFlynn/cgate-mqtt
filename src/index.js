@@ -248,8 +248,17 @@ cbusEventChannel.on('data', function (data) {
   if (logging === true) {
     console.log(`Event data: ${data}`);
   }
-  const parts = data.toString().split(" ");
-  const address = parts[2].split("/");
+  const parts = data.toString().split(" ").filter(p => p !== ""); // Filter out empty strings from double spaces
+  let address = parts[2].split("/");
+  
+  // Handle label events which have format: lighting label //NETWORK/254/56  1 GROUP_ADDRESS - ...
+  // For label events, the group address is in parts[4] (after filtering empty strings)
+  if (parts[0] === "lighting" && parts[1] === "label") {
+    // Group address is in parts[4] for label events (line number is in parts[3])
+    const groupAddress = parts[4];
+    address.push(groupAddress);
+  }
+  
   const uniqueId = `cbus_${address[3]}_${address[4]}_${address[5]}`;
 
   switch (parts[0]) {
@@ -474,6 +483,23 @@ function handleLightingEvent(parts, uniqueId) {
         mqttMessage.publish(`cbus/light/cbus2-mqtt/${uniqueId}/state`, "ON", options, function () { });
       } else {
         mqttMessage.publish(`cbus/light/cbus2-mqtt/${uniqueId}/state`, "OFF", options, function () { });
+      }
+      break;
+    case "label":
+      // Label events are informational only - decode and display the label text
+      // Format: lighting label //NETWORK/254/56  1 GROUP - LINE HEXTEXT #metadata
+      if (logging === true) {
+        try {
+          // The hex text is at index 8 (after "- F0 0")
+          const hexText = parts[8];
+          // Decode hex to text
+          const labelText = Buffer.from(hexText, 'hex').toString('utf8');
+          const groupAddress = parts[4]; // Group address
+          const lineNumber = parts[3]; // Line number (button)
+          console.log(`Label update for ${uniqueId} (group ${groupAddress}, button ${lineNumber}): "${labelText}"`);
+        } catch (err) {
+          console.log(`Label update received for ${uniqueId} (decode error: ${err.message})`);
+        }
       }
       break;
     default:
