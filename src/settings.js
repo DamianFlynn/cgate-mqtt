@@ -11,9 +11,9 @@ exports.mqtt = '172.16.1.70:1883';
 
 exports.topicPrefix = "homeassistant"
 exports.enableHassDiscovery = true;
-//username and password (unncomment to use)
-exports.mqttusername = 'hass';
-exports.mqttpassword = 'Prax1an!';
+//username and password
+exports.mqttusername = 'your_mqtt_username';
+exports.mqttpassword = 'your_mqtt_password';
 
 // net and app for automatically requesting values
 exports.getallnetapp = '254/56';
@@ -31,3 +31,11 @@ exports.messageinterval = 200;
 
 //logging
 exports.logging = false;
+
+// eDLT (Dynamic Labelling Technology) Support
+exports.enableDltSupport = true;
+exports.enableDltTemplating = false;
+
+// Update DLT time/date on startup and periodically
+exports.updateDltTimeOnStart = true;
+exports.updateDltTimePeriod = 60*60; // Update every hour (in seconds)

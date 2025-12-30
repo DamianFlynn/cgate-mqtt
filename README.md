@@ -13,6 +13,7 @@ This project aims to establish a bridge between the Clipsal C-Gate Server and MQ
 - **Seamless CBUS Integration:** The C-Gate to MQTT Bridge connects CBUS PLCs with MQTT brokers, facilitating real-time communication and control.
 - **MQTT Discovery for Home Assistant:** The application supports MQTT Discovery, automatically configuring CBUS devices within Home Assistant as Dimmers, Switches, or Phantoms.
 - **Trigger Application Support:** The project includes support for CBUS Trigger applications, enabling Home Assistant to identify and respond to triggered events.
+- **eDLT Label Support:** Dynamic labelling support for C-Bus DLT wall switches, allowing real-time label updates via MQTT with automatic time/date synchronization.
 - **Flexible Configuration:** Users can customize the application's settings to align with their specific CBUS setup and MQTT broker.
 
 
@@ -23,6 +24,17 @@ This project aims to establish a bridge between the Clipsal C-Gate Server and MQ
 1. Home Assistant will automatically recognize lighting devices and configure them as Dimmers, Switches, or Phantoms.
 1. When CBUS trigger applications are fired, Home Assistant will receive MQTT Events and can respond accordingly.
 1. Use Home Assistant to control CBUS lighting devices.
+
+### eDLT (Electronic Dynamic Labelling Technology)
+
+The bridge now supports dynamic labelling for C-Bus DLT wall switches:
+
+- **Dynamic Label Updates:** Update DLT switch labels in real-time via MQTT
+- **Automatic Time/Date Sync:** Keep DLT units synchronized with current time
+- **Auto-Discovery:** Automatically detects DLT units from your C-Bus project file
+- **Template Support:** Optional templating for dynamic content (e.g., temperature displays)
+
+For detailed DLT usage instructions, see [DLT-SUPPORT.md](DLT-SUPPORT.md).
 
 
 ## Usage
@@ -119,6 +131,10 @@ Modify the `settings.js` file to configure the following options:
 - `getallnetapp`: Network application for getting all values.
 - `getallonstart`: Get all values on startup.
 - `getallperiod`: Period for getting all values.
+- `enableDltSupport`: Enable DLT dynamic labelling support.
+- `enableDltTemplating`: Enable template processing in DLT labels.
+- `updateDltTimeOnStart`: Update DLT time/date on startup.
+- `updateDltTimePeriod`: Period for updating DLT time/date.
 
 This is my current `settings.js` 
 
@@ -221,6 +237,8 @@ The following Node.js packages are used in this project:
 
 The application uses MQTT topics for communication. The topics are structured as follows:
 
+### Bridge and Lighting Topics
+
 - `cbus/bridge/cbus2-mqtt/state`: Bridge online/offline status.
 - `cbus/event/cbus2-mqtt/<unique_id>/state`: Trigger Events.
 - `cbus/light/cbus2-mqtt/<unique_id>/state`: Light state (ON/OFF).
@@ -229,6 +247,17 @@ The application uses MQTT topics for communication. The topics are structured as
 - `cbus/light/cbus2-mqtt/<unique_id>/brightness/set`: Set Light brightness (0-100).
 - `cbus/light/cbus2-mqtt/<unique_id>/attributes`: C-Bus attributes for the group in JSON package, can also be seen in Home Assistant
   `{"cbus_address":"254/56/3","unit_name":"DIM1A-01","unit_address":"0x3","unit_type":"Dimmer","unit_model":"L5508D1A","output_channel":"3"}`
+
+### DLT Topics
+
+- `cbus/dlt/<network>_<application>_<group>/<line>/set`: Set DLT label text (e.g., `cbus/dlt/254_56_129/1/set`)
+- `cbus/dlt/<network>_<application>_<group>/<line>/state`: Current DLT label text
+
+Where:
+- `<network>`: C-Bus network (typically 254)
+- `<application>`: C-Bus application (typically 56 for lighting)
+- `<group>`: C-Bus group address
+- `<line>`: Button/line number (1-5 for most DLT switches)
 
 
 ## Troubleshooting

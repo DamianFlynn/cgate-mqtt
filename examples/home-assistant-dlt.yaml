@@ -1,0 +1,319 @@
+#
+# Home Assistant Configuration Example for C-Bus DLT Labels
+#
+# This file contains example automations and scripts for controlling
+# DLT labels on C-Bus wall switches via the cgate-mqtt bridge.
+#
+# Add these to your Home Assistant configuration.yaml or automations.yaml
+#
+
+# ============================================================================
+# MQTT Sensor to Monitor DLT Label States
+# ============================================================================
+
+mqtt:
+  sensor:
+    # Monitor DLT label line 1
+    - name: "Kitchen DLT Line 1"
+      unique_id: "kitchen_dlt_line_1"
+      state_topic: "cbus/dlt/254_56_10/1/state"
+      icon: mdi:label
+    
+    # Monitor DLT label line 2
+    - name: "Kitchen DLT Line 2"
+      unique_id: "kitchen_dlt_line_2"
+      state_topic: "cbus/dlt/254_56_10/2/state"
+      icon: mdi:label
+
+# ============================================================================
+# Scripts for Setting DLT Labels
+# ============================================================================
+
+script:
+  # Set a single DLT label
+  set_dlt_label:
+    alias: "Set DLT Label"
+    description: "Set a label on a DLT display"
+    fields:
+      dlt_address:
+        description: "DLT address (e.g., 254_56_10)"
+        example: "254_56_10"
+      line:
+        description: "Line number (1-8)"
+        example: 1
+      text:
+        description: "Label text"
+        example: "Living Room"
+    sequence:
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/{{ dlt_address }}/{{ line }}/set"
+          payload: "{{ text }}"
+  
+  # Set multiple DLT labels at once
+  set_dlt_labels_kitchen:
+    alias: "Set Kitchen DLT Labels"
+    description: "Set all labels for kitchen DLT"
+    sequence:
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_10/1/set"
+          payload: "Kitchen"
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_10/2/set"
+          payload: "Main Lights"
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_10/3/set"
+          payload: "Status: OK"
+  
+  # Clear all DLT labels
+  clear_dlt_labels:
+    alias: "Clear DLT Labels"
+    description: "Clear all labels on a DLT display"
+    fields:
+      dlt_address:
+        description: "DLT address (e.g., 254_56_10)"
+        example: "254_56_10"
+    sequence:
+      - repeat:
+          count: 8
+          sequence:
+            - service: mqtt.publish
+              data:
+                topic: "cbus/dlt/{{ dlt_address }}/{{ repeat.index }}/set"
+                payload: ""
+            - delay:
+                milliseconds: 100
+
+# ============================================================================
+# Automations for Dynamic DLT Label Updates
+# ============================================================================
+
+automation:
+  # Update DLT with temperature from sensor
+  - id: dlt_temperature_update
+    alias: "DLT: Update Temperature Display"
+    description: "Update DLT label when temperature changes"
+    trigger:
+      - platform: state
+        entity_id: sensor.kitchen_temperature
+    condition:
+      - condition: template
+        value_template: "{{ trigger.to_state.state != 'unavailable' }}"
+    action:
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_10/2/set"
+          payload: "Temp: {{ states('sensor.kitchen_temperature') | round(1) }}°C"
+  
+  # Update DLT when motion is detected
+  - id: dlt_motion_update
+    alias: "DLT: Update Motion Status"
+    description: "Update DLT label when motion is detected"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.kitchen_motion
+    action:
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_10/3/set"
+          payload: >
+            {% if trigger.to_state.state == 'on' %}
+              Motion: Detected
+            {% else %}
+              Motion: Clear
+            {% endif %}
+  
+  # Update DLT with time when lights turn on
+  - id: dlt_time_on_light
+    alias: "DLT: Show Time When Lights On"
+    description: "Display current time on DLT when lights turn on"
+    trigger:
+      - platform: state
+        entity_id: light.kitchen_lights
+        to: 'on'
+    action:
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_10/4/set"
+          payload: "{{ now().strftime('%H:%M') }}"
+  
+  # Clear DLT when lights turn off
+  - id: dlt_clear_on_light_off
+    alias: "DLT: Clear When Lights Off"
+    description: "Clear DLT display when lights turn off"
+    trigger:
+      - platform: state
+        entity_id: light.kitchen_lights
+        to: 'off'
+        for:
+          minutes: 5
+    action:
+      - service: script.clear_dlt_labels
+        data:
+          dlt_address: "254_56_10"
+  
+  # Update DLT with energy usage
+  - id: dlt_energy_update
+    alias: "DLT: Update Energy Display"
+    description: "Update DLT with current power consumption"
+    trigger:
+      - platform: time_pattern
+        minutes: "/5"  # Every 5 minutes
+    condition:
+      - condition: state
+        entity_id: light.kitchen_lights
+        state: 'on'
+    action:
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_10/4/set"
+          payload: "{{ states('sensor.house_power') | round(0) }}W"
+  
+  # Welcome message on arrival
+  - id: dlt_welcome_message
+    alias: "DLT: Welcome Message"
+    description: "Display welcome message when someone arrives home"
+    trigger:
+      - platform: state
+        entity_id: person.john
+        to: 'home'
+    action:
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_10/1/set"
+          payload: "Welcome Home!"
+      - delay:
+          seconds: 10
+      - service: script.set_dlt_labels_kitchen
+  
+  # Weather display
+  - id: dlt_weather_update
+    alias: "DLT: Update Weather Display"
+    description: "Update DLT with current weather information"
+    trigger:
+      - platform: time_pattern
+        minutes: "/30"  # Every 30 minutes
+    action:
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_15/1/set"
+          payload: "Weather"
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_15/2/set"
+          payload: "{{ states('weather.home') }}"
+      - service: mqtt.publish
+        data:
+          topic: "cbus/dlt/254_56_15/3/set"
+          payload: "{{ state_attr('weather.home', 'temperature') }}°C"
+  
+  # Alert display for security
+  - id: dlt_security_alert
+    alias: "DLT: Security Alert"
+    description: "Display security alert on DLT"
+    trigger:
+      - platform: state
+        entity_id: alarm_control_panel.home
+        to: 'triggered'
+    action:
+      - repeat:
+          count: 10
+          sequence:
+            - service: mqtt.publish
+              data:
+                topic: "cbus/dlt/254_56_10/1/set"
+                payload: "!! ALERT !!"
+            - service: mqtt.publish
+              data:
+                topic: "cbus/dlt/254_56_10/2/set"
+                payload: "Security Alarm"
+            - delay:
+                milliseconds: 500
+            - service: script.clear_dlt_labels
+              data:
+                dlt_address: "254_56_10"
+            - delay:
+                milliseconds: 500
+
+# ============================================================================
+# Lovelace Dashboard Card Example
+# ============================================================================
+
+# Add this to your Lovelace dashboard to create a DLT control interface:
+#
+# type: vertical-stack
+# cards:
+#   - type: markdown
+#     content: |
+#       ## Kitchen DLT Control
+#       Set labels on the kitchen DLT display
+#   
+#   - type: entities
+#     entities:
+#       - entity: sensor.kitchen_dlt_line_1
+#         name: "Line 1"
+#       - entity: sensor.kitchen_dlt_line_2
+#         name: "Line 2"
+#   
+#   - type: horizontal-stack
+#     cards:
+#       - type: button
+#         name: "Set Labels"
+#         tap_action:
+#           action: call-service
+#           service: script.set_dlt_labels_kitchen
+#       - type: button
+#         name: "Clear"
+#         tap_action:
+#           action: call-service
+#           service: script.clear_dlt_labels
+#           service_data:
+#             dlt_address: "254_56_10"
+
+# ============================================================================
+# Node-RED Flow Example (JSON)
+# ============================================================================
+
+# Import this flow into Node-RED to create a DLT label controller:
+#
+# [
+#   {
+#     "id": "inject_temp",
+#     "type": "inject",
+#     "name": "Update Temp Every Min",
+#     "topic": "",
+#     "payload": "",
+#     "payloadType": "date",
+#     "repeat": "60",
+#     "crontab": "",
+#     "once": true,
+#     "wires": [["get_temp"]]
+#   },
+#   {
+#     "id": "get_temp",
+#     "type": "api-current-state",
+#     "name": "Get Temperature",
+#     "server": "home_assistant",
+#     "entity_id": "sensor.kitchen_temperature",
+#     "wires": [["format_temp"]]
+#   },
+#   {
+#     "id": "format_temp",
+#     "type": "function",
+#     "name": "Format Label",
+#     "func": "msg.payload = `Temp: ${Math.round(msg.data.state * 10) / 10}°C`;\nreturn msg;",
+#     "wires": [["mqtt_out"]]
+#   },
+#   {
+#     "id": "mqtt_out",
+#     "type": "mqtt out",
+#     "name": "DLT Line 2",
+#     "topic": "cbus/dlt/254_56_10/2/set",
+#     "broker": "mqtt_broker",
+#     "wires": []
+#   }
+# ]
+
