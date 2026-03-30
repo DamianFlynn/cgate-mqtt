@@ -441,7 +441,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
       payload = {
         name: `${tagName}`,
         unique_id: `${uniqueId}`,
-        object_id: `${uniqueId}`,
+        default_entity_id: `light.${uniqueId}`,
         state_topic: `cbus/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/state`,
         command_topic: `cbus/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/set`,
         json_attributes_topic: `cbus/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/attributes`,
@@ -471,7 +471,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
       payload = {
         name: `${tagName}`,
         unique_id: `${uniqueId}`,
-        object_id: `${uniqueId}`,
+        default_entity_id: `event.${uniqueId}`,
         availability_topic: "cbus/bridge/cbus2-mqtt/state",
         payload_available: "online",
         payload_not_available: "offline",
@@ -506,6 +506,12 @@ function readXmlFile(filePath) {
         console.error(err);
         return;
       }
+
+      const xx = result.Installation.Project[0].Network[0].Unit
+
+
+
+
       const units = result.Installation.Project[0].Network[0].Unit?.filter(unit => unit.CatalogNumber[0].startsWith('L55')) || [];
       const groupElements = [];
 
