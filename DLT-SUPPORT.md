@@ -214,13 +214,16 @@ The bridge will substitute the current value from the specified MQTT topic. This
 The bridge uses the following C-Gate commands for DLT functionality:
 
 ### Set Label
+
+Saturn eDLT requires the `lighting label` command with hex-encoded text and 0-based button indexing:
+
 ```
-label //{project}/{network}/{application}/{group} {line} {text}
+lighting label {network}/56 1 {group} - {button} {hex-encoded-text}
 ```
 
-Example:
+Example (sets button 0 / MQTT line 1 to "Kitchen Lights"):
 ```
-label //HOME/254/56/10 1 Kitchen Lights
+lighting label 254/56 1 10 - 0 4b69746368656e204c6967687473
 ```
 
 ### Update Time/Date

@@ -19,7 +19,7 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep node || exit 1"]
+      test: ["CMD-SHELL", "ps aux | grep '[n]ode' > /dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

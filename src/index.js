@@ -32,6 +32,7 @@ var treenet = 0;
 var interval = {};
 var commandInterval = {};
 var eventInterval = {};
+var dltInterval = null;
 var mqttConnected = false;
 var cbusCmdConnected = false;
 var cbusEventConnected = false;
@@ -302,10 +303,15 @@ function started() {
     // DLT Support
     if (settings.enableDltSupport) {
       if (settings.updateDltTimeOnStart) {
-        updateAllDltTime();
+        // Delay initial sync to allow XML discovery to populate dltUnits
+        setTimeout(function () {
+          if (logging) { console.log('Updating DLT time/date after discovery'); }
+          updateAllDltTime();
+        }, 5000);
       }
       if (settings.updateDltTimePeriod) {
-        setInterval(function () {
+        if (dltInterval) { clearInterval(dltInterval); }
+        dltInterval = setInterval(function () {
           if (logging) {
             console.log('Updating DLT time/date');
           }
@@ -367,10 +373,15 @@ function handleMqttMessage(topicArg, message) {
 
 
 function handleDltLabelMessage(parts, message) {
+  if (!settings.enableDltSupport) { return; }
   // Topic format: cbus/dlt/{unit_address}/{line}/set
   // Example: cbus/dlt/254_56_10/1/set
   const unitId = parts[2]; // e.g., "254_56_10"
   const line = parseInt(parts[3], 10); // line number (1-8 typically)
+  if (!unitId || isNaN(line) || line < 1) {
+    console.log(`DLT: invalid topic format, ignoring`);
+    return;
+  }
   const text = message.toString();
   
   // Convert unit_address format to C-Bus address format

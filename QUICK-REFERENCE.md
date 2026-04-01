@@ -187,8 +187,8 @@ Test: Special characters individually on your specific DLT model
 The bridge automatically sends these commands to C-Gate:
 
 ```
-# Set label
-label //HOME/254/56/10 1 Kitchen Lights
+# Set label (hex-encoded text, 0-based button index)
+lighting label 254/56 1 10 - 0 4b69746368656e204c6967687473
 
 # Update time/date
 time //HOME/254/56/10

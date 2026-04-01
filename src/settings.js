@@ -11,9 +11,9 @@ exports.mqtt = '172.16.1.70:1883';
 
 exports.topicPrefix = "homeassistant"
 exports.enableHassDiscovery = true;
-//username and password
-exports.mqttusername = 'your_mqtt_username';
-exports.mqttpassword = 'your_mqtt_password';
+//username and password (leave null for anonymous MQTT brokers; set in settings.production.js for auth)
+exports.mqttusername = null;
+exports.mqttpassword = null;
 
 // net and app for automatically requesting values
 exports.getallnetapp = '254/56';
