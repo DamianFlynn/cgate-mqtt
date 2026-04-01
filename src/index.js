@@ -33,6 +33,7 @@ var interval = {};
 var commandInterval = {};
 var eventInterval = {};
 var dltInterval = null;
+var getallInterval = null;
 var mqttConnected = false;
 var cbusCmdConnected = false;
 var cbusEventConnected = false;
@@ -293,8 +294,8 @@ function started() {
       // }, 60000); // wait for 60 seconds before executing the command
     }
     if (settings.getallnetapp && settings.getallperiod) {
-      clearInterval(interval);
-      setInterval(function () {
+      if (getallInterval) { clearInterval(getallInterval); }
+      getallInterval = setInterval(function () {
         console.log('Getting all values');
         cgateCommand.write('GET //' + settings.cbusname + '/' + settings.getallnetapp + '/* level\n');
       }, settings.getallperiod * 1000);
