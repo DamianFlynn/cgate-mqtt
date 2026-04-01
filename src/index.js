@@ -470,10 +470,20 @@ function handleTriggerEvent(parts, uniqueId) {
     console.log(`C-Bus trigger received: ${uniqueId}`);
   }
 
-  const sourceunit = parts[4].split('&').find(param => param.startsWith('#sourceunit='));
+  const levelIdx = parseInt(parts[3], 10);
+  const sourceunit = (parts.find(p => p.startsWith('#sourceunit=')) || '').split('=')[1] || 'unknown';
+
+  // Guard: unknown trigger index (e.g. trigger label events from unconfigured groups)
+  if (!triggerActions[levelIdx]) {
+    if (logging === true) {
+      console.warn(`Skipping trigger event for ${uniqueId}: no triggerAction at index ${levelIdx}`);
+    }
+    return;
+  }
+
   const payload = {
-    event_type: triggerActions[parseInt(parts[3], 10)].tagName,
-    trigger_unit: sourceunit ? sourceunit.split('=')[1] : 'unknown'
+    event_type: triggerActions[levelIdx].tagName,
+    trigger_unit: sourceunit
   };
 
   mqttMessage.publish(`cbus/event/cbus2-mqtt/${uniqueId}/state`, JSON.stringify(payload), options, function () { });
