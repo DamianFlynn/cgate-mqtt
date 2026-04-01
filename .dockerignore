@@ -1,0 +1,33 @@
+# Documentation
+*.md
+LICENSE.txt
+
+# Examples
+examples/
+
+# Git
+.git
+.gitignore
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Development files
+dev/
+.vscode/
+.idea/
+
+# Node
+node_modules/
+npm-debug.log
+
+# Deployment
+deploy.sh
+settings.production.js
+
+# Logs
+*.log
+logs/
+

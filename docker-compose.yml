@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  cgate-mqtt:
+    build: .
+    container_name: cgate-mqtt
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - NODE_ENV=production
+    volumes:
+      # Mount settings.js configuration file
+      - ./src/settings.js:/usr/src/app/settings.js:ro
+      # Mount C-Bus project XML file (update path as needed)
+      - ./src/HOME.xml:/usr/src/app/HOME.xml:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep node || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+

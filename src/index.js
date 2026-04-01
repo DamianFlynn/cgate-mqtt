@@ -51,6 +51,9 @@ var HASS_DEVICE_CLASSES = {
   DEVICE: "device"
 };
 
+// Store DLT unit information
+var dltUnits = {};
+
 
 // Connect to MQTT Broker
 var mqttClient = mqtt.connect(`mqtt://${settings.mqtt}`, {
@@ -245,8 +248,17 @@ cbusEventChannel.on('data', function (data) {
   if (logging === true) {
     console.log(`Event data: ${data}`);
   }
-  const parts = data.toString().split(" ");
-  const address = parts[2].split("/");
+  const parts = data.toString().split(" ").filter(p => p !== ""); // Filter out empty strings from double spaces
+  let address = parts[2].split("/");
+  
+  // Handle label events which have format: lighting label //NETWORK/254/56  1 GROUP_ADDRESS - ...
+  // For label events, the group address is in parts[4] (after filtering empty strings)
+  if (parts[0] === "lighting" && parts[1] === "label") {
+    // Group address is in parts[4] for label events (line number is in parts[3])
+    const groupAddress = parts[4];
+    address.push(groupAddress);
+  }
+  
   const uniqueId = `cbus_${address[3]}_${address[4]}_${address[5]}`;
 
   switch (parts[0]) {
@@ -286,6 +298,21 @@ function started() {
         cgateCommand.write('GET //' + settings.cbusname + '/' + settings.getallnetapp + '/* level\n');
       }, settings.getallperiod * 1000);
     }
+    
+    // DLT Support
+    if (settings.enableDltSupport) {
+      if (settings.updateDltTimeOnStart) {
+        updateAllDltTime();
+      }
+      if (settings.updateDltTimePeriod) {
+        setInterval(function () {
+          if (logging) {
+            console.log('Updating DLT time/date');
+          }
+          updateAllDltTime();
+        }, settings.updateDltTimePeriod * 1000);
+      }
+    }
   }
 
 }
@@ -300,6 +327,13 @@ function handleMqttMessage(topicArg, message) {
   //   topic = topic.replace(topicPrefix, "");
   // }
   const parts = topic.split("/");
+  
+  // Handle DLT label messages
+  if (parts[1] === "dlt" && parts[parts.length - 1] === "set") {
+    handleDltLabelMessage(parts, message);
+    return;
+  }
+  
   const cbusAddress = parts[3].split("_").slice(1).join("/");
   switch (parts[parts.length - 1].toLowerCase()) {
     case "set":
@@ -332,6 +366,94 @@ function handleMqttMessage(topicArg, message) {
 
 
 
+function handleDltLabelMessage(parts, message) {
+  // Topic format: cbus/dlt/{unit_address}/{line}/set
+  // Example: cbus/dlt/254_56_10/1/set
+  const unitId = parts[2]; // e.g., "254_56_10"
+  const line = parseInt(parts[3], 10); // line number (1-8 typically)
+  const text = message.toString();
+  
+  // Convert unit_address format to C-Bus address format
+  const cbusAddress = unitId.split("_").join("/");
+  
+  // For Saturn eDLT, extract just network/group (remove application)
+  const addressParts = cbusAddress.split("/");
+  const network = addressParts[0];
+  const group = addressParts[2];
+  const shortAddress = `${network}/${group}`;
+  
+  // Saturn buttons are 0-indexed, so subtract 1
+  const buttonIndex = line - 1;
+  
+  // Process template if enabled
+  const processedText = settings.enableDltTemplating ? processTemplate(text) : text;
+  
+  setDltLabel(shortAddress, buttonIndex, processedText);
+}
+
+function setDltLabel(address, line, text) {
+  // Saturn eDLT uses: lighting label <network>/<app> 1 <group> - <button> <hex-encoded-text>\r\n
+  // Example: lighting label 254/56 1 129 - 0 48656C6C6F\r\n
+  
+  // Extract network and group from address (address is like "254/129")
+  const parts = address.split('/');
+  const network = parts[0];
+  const group = parts[1];
+  
+  // Hex encode the text
+  const hexText = Buffer.from(text, 'utf8').toString('hex');
+  
+  // Build command
+  const command = `lighting label ${network}/56 1 ${group} - ${line} ${hexText}\r\n`;
+  if (logging) {
+    console.log(`Setting DLT label: ${network}/56/${group} button ${line} to "${text}"`);
+  }
+  cgateCommand.write(command);
+  
+  // Publish confirmation back to MQTT
+  const unitId = address.replace(/\//g, "_");
+  mqttMessage.publish(`cbus/dlt/${unitId}/${line}/state`, text);
+}
+
+function processTemplate(template) {
+  // Simple template engine to support dynamic content
+  // Supports ${variable} syntax for MQTT topic references
+  // Example: "Temp: ${cbus/sensor/temp}" will substitute the value from that topic
+  
+  if (!template.includes('${')) {
+    return template;
+  }
+  
+  // For now, return the template as-is
+  // Advanced implementation would cache MQTT values and substitute them
+  // This can be expanded based on specific requirements
+  return template;
+}
+
+function updateAllDltTime() {
+  // Update time/date for all registered DLT units
+  if (Object.keys(dltUnits).length === 0) {
+    if (logging) {
+      console.log('No DLT units registered for time update');
+    }
+    return;
+  }
+  
+  Object.keys(dltUnits).forEach(unitAddress => {
+    updateDltTime(unitAddress);
+  });
+}
+
+function updateDltTime(address) {
+  // C-Gate command to update time/date on DLT unit
+  // Uses the C-Gate server's current time
+  const command = `time //${settings.cbusname}/${address}\n`;
+  if (logging) {
+    console.log(`Updating DLT time for unit: ${address}`);
+  }
+  cgateCommand.write(command);
+}
+
 function handleTriggerEvent(parts, uniqueId) {
   if (logging === true) {
     console.log(`C-Bus trigger received: ${uniqueId}`);
@@ -361,6 +483,23 @@ function handleLightingEvent(parts, uniqueId) {
         mqttMessage.publish(`cbus/light/cbus2-mqtt/${uniqueId}/state`, "ON", options, function () { });
       } else {
         mqttMessage.publish(`cbus/light/cbus2-mqtt/${uniqueId}/state`, "OFF", options, function () { });
+      }
+      break;
+    case "label":
+      // Label events are informational only - decode and display the label text
+      // Format: lighting label //NETWORK/254/56  1 GROUP - LINE HEXTEXT #metadata
+      if (logging === true) {
+        try {
+          // The hex text is at index 8 (after "- F0 0")
+          const hexText = parts[8];
+          // Decode hex to text
+          const labelText = Buffer.from(hexText, 'hex').toString('utf8');
+          const groupAddress = parts[4]; // Group address
+          const lineNumber = parts[3]; // Line number (button)
+          console.log(`Label update for ${uniqueId} (group ${groupAddress}, button ${lineNumber}): "${labelText}"`);
+        } catch (err) {
+          console.log(`Label update received for ${uniqueId} (decode error: ${err.message})`);
+        }
       }
       break;
     default:
@@ -537,6 +676,40 @@ function readXmlFile(filePath) {
       });
       if (logging == true) { console.log(`Group Elements: ${JSON.stringify(groupElements)}`) };
       console.log(`Found ${units.length} Light Channel Packs, configured for ${groupElements.length} Group Elements: `);
+      
+      // Parse DLT units if DLT support is enabled
+      if (settings.enableDltSupport) {
+        const dltUnitsList = result.Installation.Project[0].Network[0].Unit?.filter(unit => 
+          unit.CatalogNumber[0].startsWith('L51') || 
+          unit.CatalogNumber[0].includes('DLT') ||
+          unit.CatalogNumber[0].includes('DLP')
+        ) || [];
+        
+        dltUnitsList.forEach(unit => {
+          const catalogNumber = unit.CatalogNumber[0];
+          const unitAddressObj = unit.PP.find(pp => pp.$.Name === 'UnitAddress');
+          const unitAddress = unitAddressObj?.$?.Value;
+          const unitNameObj = unit.PP.find(pp => pp.$.Name === 'UnitName');
+          const unitName = unitNameObj?.$?.Value;
+          
+          if (unitAddress) {
+            // Store DLT unit info (convert hex address to decimal for C-Bus addressing)
+            const address = `254/56/${parseInt(unitAddress, 16)}`;
+            dltUnits[address] = {
+              catalogNumber: catalogNumber,
+              unitName: unitName,
+              unitAddress: unitAddress
+            };
+            if (logging) {
+              console.log(`DLT Unit found: ${unitName} (${catalogNumber}) at address ${address}`);
+            }
+          }
+        });
+        
+        if (dltUnitsList.length > 0 && logging) {
+          console.log(`Found ${dltUnitsList.length} DLT units`);
+        }
+      }
       
       const appGroups = result.Installation.Project[0].Network[0].Application.find(app => app.Address[0] === '56').Group;
 
