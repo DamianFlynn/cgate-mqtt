@@ -248,14 +248,14 @@ cbusEventChannel.on('data', function (data) {
   if (logging === true) {
     console.log(`Event data: ${data}`);
   }
-  const parts = data.toString().split(" ").filter(p => p !== ""); // Filter out empty strings from double spaces
+  const parts = data.toString().split(" ");
   let address = parts[2].split("/");
   
-  // Handle label events which have format: lighting label //NETWORK/254/56  1 GROUP_ADDRESS - ...
-  // For label events, the group address is in parts[4] (after filtering empty strings)
+  // Handle label events which have double spaces: lighting label //NETWORK/254/56  1 GROUP - ...
+  // Filter locally so we don't shift indices for other event types.
   if (parts[0] === "lighting" && parts[1] === "label") {
-    // Group address is in parts[4] for label events (line number is in parts[3])
-    const groupAddress = parts[4];
+    const filteredParts = parts.filter(p => p !== "");
+    const groupAddress = filteredParts[4];
     address.push(groupAddress);
   }
   
@@ -410,9 +410,9 @@ function setDltLabel(address, line, text) {
   }
   cgateCommand.write(command);
   
-  // Publish confirmation back to MQTT
-  const unitId = address.replace(/\//g, "_");
-  mqttMessage.publish(`cbus/dlt/${unitId}/${line}/state`, text);
+  // Publish confirmation back to MQTT using the full 3-part address to mirror the inbound topic
+  const unitId = `${network}_56_${group}`;
+  mqttMessage.publish(`cbus/dlt/${unitId}/${line + 1}/state`, text);
 }
 
 function processTemplate(template) {
@@ -487,15 +487,14 @@ function handleLightingEvent(parts, uniqueId) {
       break;
     case "label":
       // Label events are informational only - decode and display the label text
-      // Format: lighting label //NETWORK/254/56  1 GROUP - LINE HEXTEXT #metadata
+      // Format: lighting label //NETWORK/254/56  1 GROUP - LINE HEXTEXT
       if (logging === true) {
         try {
-          // The hex text is at index 8 (after "- F0 0")
-          const hexText = parts[8];
-          // Decode hex to text
+          const labelParts = parts.filter(p => p !== "");
+          const hexText = labelParts[8];
           const labelText = Buffer.from(hexText, 'hex').toString('utf8');
-          const groupAddress = parts[4]; // Group address
-          const lineNumber = parts[3]; // Line number (button)
+          const groupAddress = labelParts[4];
+          const lineNumber = labelParts[3];
           console.log(`Label update for ${uniqueId} (group ${groupAddress}, button ${lineNumber}): "${labelText}"`);
         } catch (err) {
           console.log(`Label update received for ${uniqueId} (decode error: ${err.message})`);
