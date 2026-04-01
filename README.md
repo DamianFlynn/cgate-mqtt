@@ -269,9 +269,19 @@ Where:
 
 The C-Gate to MQTT Bridge project is a comprehensive solution for seamlessly integrating Clipsal CBUS PLCs with MQTT-enabled IoT devices and services. By facilitating real-time communication, MQTT Discovery, and support for trigger applications, this application enhances the automation and control capabilities of CBUS systems within the larger IoT ecosystem. Through this bridge, users can unlock new possibilities for managing their CBUS lighting and trigger applications.
 
-## Contributions
+## Contributors
 
-Contributions to this project are welcome! If you have suggestions, bug reports, or feature requests, please open an issue or submit a pull request on GitHub.
+Thanks to everyone who has contributed code to this project:
+
+| Contributor | Contribution |
+|---|---|
+| [@DamianFlynn](https://github.com/DamianFlynn) | Original author and maintainer |
+| [@the1laz](https://github.com/the1laz) | Message queue implementation (original [cgateweb](https://github.com/the1laz/cgateweb) fork) |
+| [@tomtokic](https://github.com/tomtokic) | eDLT (Electronic Dynamic Labelling) support |
+| [@NickLocke](https://github.com/NickLocke) | Fix deprecated `object_id` for Home Assistant 2026.04 |
+| [@DaveQB](https://github.com/DaveQB) | Fix crash on malformed C-Bus trigger events |
+
+Contributions are welcome! If you have suggestions, bug reports, or feature requests, please open an issue or submit a pull request on GitHub.
 
 ## License
 
