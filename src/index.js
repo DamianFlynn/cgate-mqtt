@@ -171,20 +171,23 @@ var cgateCommand = {
 // through this queue so rapid bursts (e.g. full level poll on startup) don't
 // overwhelm the broker or cause packet loss.
 //
-// All messages are published with retain:true so Home Assistant receives the
-// last-known state immediately after a restart or reconnect.
+// Retain behaviour is controlled by settings.retainreads (via the global `options`
+// object).  HA discovery config topics always pass { retain: true } explicitly so
+// Home Assistant can rediscover entities after a restart regardless of the setting.
 //
 // Usage:  mqttMessage.publish('cbus/light/cbus2-mqtt/cbus_254_56_1/state', 'ON');
 // ---------------------------------------------------------------------------
 var mqttMessage = {
   // Enqueue a {topic, payload, opts, callback} object and kick the drain loop if idle.
-  // opts defaults to { retain: true } to preserve backwards-compatible behaviour for
-  // callers that do not supply explicit options.
+  // opts defaults to the global `options` object (derived from settings.retainreads)
+  // so the retain behaviour is controlled by runtime configuration. Call sites that
+  // must always retain (e.g. HA discovery config topics) should pass { retain: true }
+  // explicitly.
   publish: function (topic, payload, opts, callback) {
     mqttMessage.queue.push({
       topic: topic,
       payload: payload,
-      opts: opts !== undefined ? opts : { retain: true },
+      opts: opts !== undefined ? opts : options,
       callback: typeof callback === 'function' ? callback : undefined
     });
     if (mqttMessage.interval === null) {
@@ -944,7 +947,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
         unit_model: `${unitCatalogNumber}`,
         output_channel: `${outputChannel}`
       };
-      mqttMessage.publish(`cbus/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/attributes`, JSON.stringify(attributes));
+      mqttMessage.publish(`cbus/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/attributes`, JSON.stringify(attributes), { retain: true });
       break;
     case "button":
       payload = {
@@ -965,7 +968,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
     default:
       return;
   }
-  mqttMessage.publish(mqttTopic, JSON.stringify(payload));
+  mqttMessage.publish(mqttTopic, JSON.stringify(payload), { retain: true });
   discoverySent.push(uniqueId);
 }
 
