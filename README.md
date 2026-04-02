@@ -281,13 +281,13 @@ Every commit merged to `main` should follow the conventional commit format:
 |---|---|---|
 | `fix:` | Patch version bump (0.4.x) | `fix: prevent crash on short MQTT topic` |
 | `feat:` | Minor version bump (0.x.0) | `feat: add DLT label support` |
-| `fix!:` / `feat!:` | Major version bump (x.0.0) | `feat!: breaking change to topic structure` |
+| `fix!:` / `feat!:` | Breaking change: minor bump on 0.x (e.g. 0.4.0 → 0.5.0), major bump on ≥1.0.0 (x.0.0) | `feat!: breaking change to topic structure` |
 | `chore:`, `docs:`, `refactor:` | No version bump | `chore: pin Dockerfile base image` |
 
 ### Release flow
 
 1. After each push to `main`, Release Please automatically opens (or updates) a **"chore: release X.Y.Z"** pull request.
-2. That PR contains the version bump in `package.json` and updated `CHANGELOG.md` entries grouped by commit type.
+2. That PR contains the version bump in `src/package.json` and updated `CHANGELOG.md` entries grouped by commit type.
 3. When you are ready to ship, **merge the Release Please PR** — this creates a GitHub Release and pushes a semver tag (e.g. `v0.5.0`).
 4. The tag triggers the Docker publish workflow, which builds and pushes:
    - `ghcr.io/damianflynn/cgate-mqtt:0.5.0`
