@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.2](https://github.com/DamianFlynn/cgate-mqtt/compare/v0.4.1...v0.4.2) (2026-04-02)
+
+
+### Bug Fixes
+
+* default mqttMessage.publish opts to settings.retainreads ([#45](https://github.com/DamianFlynn/cgate-mqtt/issues/45)) ([392d78f](https://github.com/DamianFlynn/cgate-mqtt/commit/392d78f31a7a46da4a409815116430f60a83c866))
+* guard against short MQTT topics in handleMqttMessage ([#43](https://github.com/DamianFlynn/cgate-mqtt/issues/43)) ([3799b5e](https://github.com/DamianFlynn/cgate-mqtt/commit/3799b5e76c3d66699238ad306662e4f75930d6b1)), closes [#22](https://github.com/DamianFlynn/cgate-mqtt/issues/22)
+* honour options and callback in mqttMessage.publish ([#44](https://github.com/DamianFlynn/cgate-mqtt/issues/44)) ([f178b83](https://github.com/DamianFlynn/cgate-mqtt/commit/f178b838dcc88c76acd0a8d5cdd010c836510e93)), closes [#23](https://github.com/DamianFlynn/cgate-mqtt/issues/23)
+* housekeeping — reserved word, dead import, pinned base image, version string, expose port ([#46](https://github.com/DamianFlynn/cgate-mqtt/issues/46)) ([f4737fa](https://github.com/DamianFlynn/cgate-mqtt/commit/f4737fa49baeddf5347d6a073930c7c5ed3ca194))
+* wrap xml2js.parseString callback ([#47](https://github.com/DamianFlynn/cgate-mqtt/issues/47)) ([a014854](https://github.com/DamianFlynn/cgate-mqtt/commit/a0148544eb5b0c25306fe593f19d9a28b6701f3d))
+
 ## [0.4.1](https://github.com/DamianFlynn/cgate-mqtt/compare/cgate-mqtt-v0.4.0...cgate-mqtt-v0.4.1) (2026-04-02)
 
 
