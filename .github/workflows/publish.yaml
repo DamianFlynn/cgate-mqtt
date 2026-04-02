@@ -73,12 +73,22 @@ jobs:
 
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
+      # When triggered by a semver tag (e.g. v1.2.3 from Release Please):
+      #   - ghcr.io/…:1.2.3
+      #   - ghcr.io/…:1.2
+      #   - ghcr.io/…:1
+      # When triggered by a push to main:
+      #   - ghcr.io/…:sha-<sha>
       - name: Extract Docker metadata
         id: docker_meta
         uses: docker/metadata-action@v4.4.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: type=sha,format=long
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,format=long
        
       - name: downcase REPO
         run: |

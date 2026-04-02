@@ -1,0 +1,30 @@
+name: Release Please
+
+# Runs after every push to main.
+# Scans conventional commits since the last release and either:
+#   - Opens / updates a "chore: release X.Y.Z" PR with an updated
+#     package.json version and CHANGELOG.md, or
+#   - If that PR was just merged, creates a GitHub Release + semver tag
+#     (e.g. v0.5.0) which then triggers the Docker publish workflow.
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write       # needed to create releases and push version bump commits
+  pull-requests: write  # needed to open the release PR
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name:        ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          # Use manifest/config mode so Release Please respects the repo's manifest and config.
+          command: manifest
+          token: ${{ secrets.GITHUB_TOKEN }}
