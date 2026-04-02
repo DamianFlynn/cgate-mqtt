@@ -5,7 +5,7 @@
     "src": {
       "release-type": "node",
       "package-name": "cgate-mqtt",
-      "changelog-path": "CHANGELOG.md",
+      "changelog-path": "../CHANGELOG.md",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "draft": false,
