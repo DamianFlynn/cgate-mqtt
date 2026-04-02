@@ -21,8 +21,11 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name:        ${{ steps.release.outputs.tag_name }}
+      # Package path is "src", so release-please uses path-prefixed output keys.
+      # Root-component keys (release_created / tag_name) are only set when path
+      # is "." — using them here always yields an empty string.
+      release_created: ${{ steps.release.outputs['src--release_created'] }}
+      tag_name:        ${{ steps.release.outputs['src--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
