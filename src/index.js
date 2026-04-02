@@ -337,8 +337,16 @@ cbusCmdChannel.on('data', function (data) {
         // 343  — tree listing starting; reset accumulator
         tree = '';
       } else if (parts1[0].split(" ")[0] == "344") {
-        // 344 ...  — tree listing complete; parse accumulated XML
-        xml2js.parseString(tree, handleParsedTree);
+        // 344 ...  — tree listing complete; parse accumulated XML.
+        // xml2js callbacks receive (err, result) — wrap to handle errors
+        // before forwarding the result to handleParsedTree.
+        xml2js.parseString(tree, function (err, result) {
+          if (err) {
+            console.error('Failed to parse tree XML:', err);
+            return;
+          }
+          handleParsedTree(result);
+        });
       } else if (parts1[0] == "300") {
         // 300 <address> <level>  — level report without hyphen separator
         const parts2 = parts1[0].toString().split(" ");
