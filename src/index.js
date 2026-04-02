@@ -374,6 +374,7 @@ cbusEventChannel.on('error', function (err) {
 
 cbusEventChannel.on('connect', function (err) {
   cbusEventConnected = true;
+  eventBuffer = ""; // clear any partial line left from the previous session
   console.log('CONNECTED TO C-GATE EVENT PORT: ' + cgateIpAddr + ':' + cbusEventPort);
   // Attempt startup — will no-op unless MQTT and command port are also up.
   started();
@@ -383,6 +384,7 @@ cbusEventChannel.on('connect', function (err) {
 
 cbusEventChannel.on('close', function () {
   cbusEventConnected = false;
+  eventBuffer = ""; // discard any partial line — it will never complete
   console.log('EVENT PORT DISCONNECTED');
   // Schedule reconnect after 10 s.
   eventInterval = setTimeout(function () {
@@ -491,10 +493,11 @@ function started() {
     // One-time startup tasks: only run on the first successful connection.
     // On reconnect, we skip these to avoid duplicate GET storms and XML re-parses.
     if (!hasStarted) {
-      hasStarted = true;
-
       // Parse the C-Bus project XML to build the group/trigger/DLT maps and
       // send individual Home Assistant discovery messages for each entity.
+      // hasStarted is set to true inside readXmlFile on successful parse so
+      // that a file-not-found or parse error allows a subsequent reconnect to
+      // retry the init tasks rather than silently staying un-initialised.
       readXmlFile('HOME.xml');
 
       // Immediately poll all group levels so MQTT state reflects physical reality
@@ -1036,14 +1039,19 @@ function readXmlFile(filePath) {
     if (err) {
       console.log('C-Bus Project File not found: ' + filePath);
       console.error(err);
+      // Leave hasStarted false so a reconnect will retry this init task.
       return;
     }
     const parser = new xml2js.Parser();
     parser.parseString(data, (err, result) => {
       if (err) {
         console.error(err);
+        // Leave hasStarted false so a reconnect will retry this init task.
         return;
       }
+
+      // Mark startup complete now that the XML has been successfully parsed.
+      hasStarted = true;
 
       // --- Pass 1: Lighting DIN-rail units ---
       // Filter to units whose catalogue number starts with "L55" — these are
