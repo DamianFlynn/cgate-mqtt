@@ -78,6 +78,10 @@ var isRamping = false;           // Debounce flag used during RAMP events
 // preventing duplicate config payloads on every reconnect.
 var discoverySent = [];
 
+// hasStarted prevents started() from re-running one-time init tasks (GET all
+// levels, XML parse) on every reconnect cycle. Set to true on first run.
+var hasStarted = false;
+
 // triggerActions is a sparse array indexed by the C-Bus trigger level address.
 // Populated by readXmlFile() from the project Trigger Application (app 202).
 // Used in handleTriggerEvent() to resolve a level index to a human-readable tag name.
@@ -370,6 +374,7 @@ cbusEventChannel.on('error', function (err) {
 
 cbusEventChannel.on('connect', function (err) {
   cbusEventConnected = true;
+  eventBuffer = ""; // clear any partial line left from the previous session
   console.log('CONNECTED TO C-GATE EVENT PORT: ' + cgateIpAddr + ':' + cbusEventPort);
   // Attempt startup — will no-op unless MQTT and command port are also up.
   started();
@@ -379,6 +384,7 @@ cbusEventChannel.on('connect', function (err) {
 
 cbusEventChannel.on('close', function () {
   cbusEventConnected = false;
+  eventBuffer = ""; // discard any partial line — it will never complete
   console.log('EVENT PORT DISCONNECTED');
   // Schedule reconnect after 10 s.
   eventInterval = setTimeout(function () {
@@ -400,43 +406,55 @@ cbusEventChannel.on('close', function () {
 // The address field (parts[2]) is always "//NETWORK/net/app/group".
 // We split on "/" and take indices [3..5] to build the uniqueId used for
 // MQTT topics and Home Assistant discovery.
+// Line-buffer for the C-Gate event port — mirrors the pattern used on the
+// command port.  TCP does not guarantee one event per chunk.
+var eventBuffer = "";
+
 cbusEventChannel.on('data', function (data) {
-  if (logging === true) {
-    console.log(`Event data: ${data}`);
-  }
+  const lines = (eventBuffer + data.toString()).split("\n");
+  eventBuffer = lines[lines.length - 1];
 
-  // Split the event line on spaces to get the type, sub-type, address, etc.
-  const parts = data.toString().split(" ");
+  for (let i = 0; i < lines.length - 1; i++) {
+    const line = lines[i].trim();
+    if (!line) { continue; }
 
-  // Extract the network/app/group segments from the address field.
-  // Address format: //CBUSNAME/network/application/group
-  let address = parts[2].split("/");
+    if (logging === true) {
+      console.log(`Event data: ${line}`);
+    }
 
-  // DLT label events use a double-space before the group number, so a naive
-  // split produces an empty-string element that shifts all subsequent indices.
-  // Compact away empty strings for label events only so other event types
-  // keep their original index positions.
-  if (parts[0] === "lighting" && parts[1] === "label") {
-    const filteredParts = parts.filter(p => p !== "");
-    const groupAddress = filteredParts[4];
-    // Append the group segment so indices [3..5] remain consistent.
-    address.push(groupAddress);
-  }
+    // Split the event line on spaces to get the type, sub-type, address, etc.
+    const parts = line.split(" ");
 
-  // Build the stable unique identifier used across MQTT topics:
-  //   cbus_<network>_<application>_<group>  e.g. cbus_254_56_10
-  const uniqueId = `cbus_${address[3]}_${address[4]}_${address[5]}`;
+    // Extract the network/app/group segments from the address field.
+    // Address format: //CBUSNAME/network/application/group
+    let address = parts[2].split("/");
 
-  // Route to the appropriate handler based on the C-Bus application type.
-  switch (parts[0]) {
-    case "trigger":
-      handleTriggerEvent(parts, uniqueId);
-      break;
-    case "lighting":
-      handleLightingEvent(parts, uniqueId);
-      break;
-    default:
-      // Silently ignore unknown event types (e.g. temperature, security)
+    // DLT label events use a double-space before the group number, so a naive
+    // split produces an empty-string element that shifts all subsequent indices.
+    // Compact away empty strings for label events only so other event types
+    // keep their original index positions.
+    if (parts[0] === "lighting" && parts[1] === "label") {
+      const filteredParts = parts.filter(p => p !== "");
+      const groupAddress = filteredParts[4];
+      // Append the group segment so indices [3..5] remain consistent.
+      address.push(groupAddress);
+    }
+
+    // Build the stable unique identifier used across MQTT topics:
+    //   cbus_<network>_<application>_<group>  e.g. cbus_254_56_10
+    const uniqueId = `cbus_${address[3]}_${address[4]}_${address[5]}`;
+
+    // Route to the appropriate handler based on the C-Bus application type.
+    switch (parts[0]) {
+      case "trigger":
+        handleTriggerEvent(parts, uniqueId);
+        break;
+      case "lighting":
+        handleLightingEvent(parts, uniqueId);
+        break;
+      default:
+        // Silently ignore unknown event types (e.g. temperature, security)
+    }
   }
 });
 
@@ -469,17 +487,25 @@ function started() {
     console.log('ALL CONNECTED');
 
     // Announce the bridge itself to Home Assistant as a sensor/device.
+    // This is safe to re-run on reconnect — discoverySent guards duplicates.
     sendDiscoveryMessage(HASS_DEVICE_CLASSES.DEVICE);
 
-    // Parse the C-Bus project XML to build the group/trigger/DLT maps and
-    // send individual Home Assistant discovery messages for each entity.
-    readXmlFile('HOME.xml');
+    // One-time startup tasks: only run on the first successful connection.
+    // On reconnect, we skip these to avoid duplicate GET storms and XML re-parses.
+    if (!hasStarted) {
+      // Parse the C-Bus project XML to build the group/trigger/DLT maps and
+      // send individual Home Assistant discovery messages for each entity.
+      // hasStarted is set to true inside readXmlFile on successful parse so
+      // that a file-not-found or parse error allows a subsequent reconnect to
+      // retry the init tasks rather than silently staying un-initialised.
+      readXmlFile('HOME.xml');
 
-    // Immediately poll all group levels so MQTT state reflects physical reality
-    // without waiting for the first lighting event.  Useful after a restart.
-    if (settings.getallnetapp && settings.getallonstart) {
-      console.log('Getting all values');
-      cgateCommand.write('GET //' + settings.cbusname + '/' + settings.getallnetapp + '/* level\n');
+      // Immediately poll all group levels so MQTT state reflects physical reality
+      // without waiting for the first lighting event.  Useful after a restart.
+      if (settings.getallnetapp && settings.getallonstart) {
+        console.log('Getting all values');
+        cgateCommand.write('GET //' + settings.cbusname + '/' + settings.getallnetapp + '/* level\n');
+      }
     }
 
     // Start a recurring poll if configured.  Guard-clear ensures we don't
@@ -1013,19 +1039,24 @@ function readXmlFile(filePath) {
     if (err) {
       console.log('C-Bus Project File not found: ' + filePath);
       console.error(err);
+      // Leave hasStarted false so a reconnect will retry this init task.
       return;
     }
     const parser = new xml2js.Parser();
     parser.parseString(data, (err, result) => {
       if (err) {
         console.error(err);
+        // Leave hasStarted false so a reconnect will retry this init task.
         return;
       }
+
+      // Mark startup complete now that the XML has been successfully parsed.
+      hasStarted = true;
 
       // --- Pass 1: Lighting DIN-rail units ---
       // Filter to units whose catalogue number starts with "L55" — these are
       // Clipsal 5-series DIN lighting channel packs (dimmers and relays).
-      const units = result.Installation.Project[0].Network[0].Unit?.filter(unit => unit.CatalogNumber[0].startsWith('L55')) || [];
+      const units = result.Installation.Project[0].Network[0].Unit?.filter(unit => unit.CatalogNumber?.[0]?.startsWith('L55')) || [];
       const groupElements = [];
 
       units.forEach(unit => {
@@ -1072,9 +1103,9 @@ function readXmlFile(filePath) {
       // "DLT" / "DLP".  We record their addresses for periodic time sync.
       if (settings.enableDltSupport) {
         const dltUnitsList = result.Installation.Project[0].Network[0].Unit?.filter(unit =>
-          unit.CatalogNumber[0].startsWith('L51') ||
-          unit.CatalogNumber[0].includes('DLT') ||
-          unit.CatalogNumber[0].includes('DLP')
+          unit.CatalogNumber?.[0]?.startsWith('L51') ||
+          unit.CatalogNumber?.[0]?.includes('DLT') ||
+          unit.CatalogNumber?.[0]?.includes('DLP')
         ) || [];
 
         dltUnitsList.forEach(unit => {
