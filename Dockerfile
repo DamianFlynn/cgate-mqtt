@@ -1,4 +1,4 @@
-FROM node:alpine
+FROM node:22-alpine
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -15,5 +15,7 @@ RUN npm install
 # Bundle app source
 COPY src/ .
 
-EXPOSE 8080
+# C-Gate command port 20023 and event port 20025 are outbound TCP connections
+# initiated by this process — no inbound ports are needed.
+# EXPOSE is intentionally omitted.
 CMD [ "node", "index.js" ]

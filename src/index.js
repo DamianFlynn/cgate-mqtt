@@ -22,16 +22,16 @@ var net     = require('net');           // Node.js TCP socket
 var events  = require('events');        // EventEmitter (used for internal level events)
 var settings = require('./settings.js'); // User configuration (IPs, credentials, flags)
 // const { connect } = require('http2');
-var parseString = require('xml2js').parseString; // Used for legacy tree parsing via handleParsedTree
 const fs    = require('fs');            // File system — reads HOME.xml C-Bus project file
 const path  = require('path');          // Path helpers for locating HOME.xml
 const xml2js = require('xml2js');       // Full XML parser used in readXmlFile()
 
 // Import package.json so version/name can be referenced at runtime
-var package = require('./package.json');
+// Note: 'package' is a reserved word in strict mode — use 'pkg' instead.
+var pkg = require('./package.json');
 
 // Print startup banner so the container log makes the version immediately visible
-console.log(`Starting ${package.name} ... Version: ${package.version}`);
+console.log(`Starting ${pkg.name} ... Version: ${pkg.version}`);
 
 // MQTT publish options — if retainreads is set, all state messages are retained
 // on the broker so Home Assistant gets current state immediately on reconnect.
@@ -338,7 +338,7 @@ cbusCmdChannel.on('data', function (data) {
         tree = '';
       } else if (parts1[0].split(" ")[0] == "344") {
         // 344 ...  — tree listing complete; parse accumulated XML
-        parseString(tree, handleParsedTree);
+        xml2js.parseString(tree, handleParsedTree);
       } else if (parts1[0] == "300") {
         // 300 <address> <level>  — level report without hyphen separator
         const parts2 = parts1[0].toString().split(" ");
@@ -905,7 +905,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
     name: 'C-Bus ',
     manufacturer: 'DamianFlynn.com',
     model: 'C-Bus C-Gate MQTT Bridge',
-    sw_version: '0.5',
+    sw_version: pkg.version,
     via_device: `cbus2-mqtt`
   };
   let payload = {};
