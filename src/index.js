@@ -48,8 +48,8 @@ let treenet = 0;
 // getallInterval: periodic GET all-levels timer (setInterval) controlled by settings.getallperiod.
 // dltInterval:    periodic DLT time-sync timer  (setInterval) controlled by settings.updateDltTimePeriod.
 const interval = {};
-const commandInterval = {};
-const eventInterval = {};
+let commandInterval = null;
+let eventInterval = null;
 let dltInterval = null;
 let getallInterval = null;
 
@@ -280,7 +280,7 @@ cbusCmdChannel.on('connect', function (err) {
   // Attempt startup — will no-op unless MQTT and event port are also up.
   started();
   // Cancel any pending reconnect timer now that we're connected.
-  clearInterval(commandInterval);
+  clearTimeout(commandInterval);
 });
 
 cbusCmdChannel.on('close', function () {
@@ -372,7 +372,7 @@ cbusEventChannel.on('connect', function (err) {
   // Attempt startup — will no-op unless MQTT and command port are also up.
   started();
   // Cancel any pending reconnect timer.
-  clearInterval(eventInterval);
+  clearTimeout(eventInterval);
 });
 
 cbusEventChannel.on('close', function () {
