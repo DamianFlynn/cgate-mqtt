@@ -21,7 +21,7 @@ jobs:
 
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write  # needed for gh release edit in the annotation step
       packages: write
       # This is used to complete the identity challenge
       # with sigstore/fulcio when running outside of PRs.
@@ -129,3 +129,49 @@ jobs:
       #     DIGEST: ${{ steps.build-and-push.outputs.digest }}
       #     TAGS: ${{ steps.docker_meta.outputs.tags }}
       #   run: cosign sign --yes "${TAGS}@${DIGEST}"
+
+      # When triggered by a semver tag (v*.*.*), append Docker pull instructions
+      # to the corresponding GitHub Release so users know which image to use.
+      - name: Annotate GitHub Release with Docker image info
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          REPO_LC="${GITHUB_REPOSITORY,,}"
+          MINOR="${VERSION%.*}"
+
+          # Fetch existing release notes
+          EXISTING=$(gh release view "v${VERSION}" --json body --jq '.body' 2>/dev/null || true)
+
+          # Only append if Docker section not already present
+          if echo "$EXISTING" | grep -q "## Docker Images"; then
+            echo "Docker section already present, skipping."
+            exit 0
+          fi
+
+          # Write the full updated notes to a temp file to avoid shell escaping issues
+          {
+            echo "$EXISTING"
+            echo ""
+            echo "## Docker Images"
+            echo ""
+            echo '```bash'
+            echo "# Pinned to this release (recommended for production)"
+            echo "docker pull ghcr.io/${REPO_LC}:${VERSION}"
+            echo ""
+            echo "# Latest patch of this minor version"
+            echo "docker pull ghcr.io/${REPO_LC}:${MINOR}"
+            echo ""
+            echo "# Always latest release"
+            echo "docker pull ghcr.io/${REPO_LC}:latest"
+            echo '```'
+            echo ""
+            echo "| Tag | Meaning |"
+            echo "|-----|---------|"
+            echo "| \`${VERSION}\` | This exact release |"
+            echo "| \`${MINOR}\` | Latest patch for this minor version |"
+            echo "| \`latest\` | Most recent release |"
+          } > /tmp/release-notes.md
+
+          gh release edit "v${VERSION}" --notes-file /tmp/release-notes.md
