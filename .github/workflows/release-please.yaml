@@ -41,3 +41,7 @@ jobs:
     with:
       release_tag: ${{ needs.release-please.outputs.tag_name }}
     secrets: inherit
+    permissions:
+      contents: write   # gh release edit in the annotation step
+      packages: write   # push to GHCR
+      id-token: write   # cosign OIDC signing (if enabled)
