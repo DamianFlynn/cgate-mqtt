@@ -1,6 +1,6 @@
 {
   "name": "cgate-mqtt",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "C-Gate to MQTT Bridge with eDLT support",
   "dependencies": {
