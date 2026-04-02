@@ -530,6 +530,13 @@ function handleMqttMessage(topicArg, message) {
     return;
   }
 
+  // Guard: a valid cbus control topic needs at least 4 parts (cbus/<class>/<bridge>/<id>).
+  // Topics shorter than this cannot carry a uniqueId and would crash on parts[3].
+  if (parts.length < 4) {
+    console.log(`Ignoring malformed topic (too few segments): ${topicArg}`);
+    return;
+  }
+
   // Recover C-Bus address from the uniqueId segment.
   // uniqueId format: "cbus_<net>_<app>_<group>"  →  "<net>/<app>/<group>"
   const cbusAddress = parts[3].split("_").slice(1).join("/");
