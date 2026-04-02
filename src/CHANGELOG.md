@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.4](https://github.com/DamianFlynn/cgate-mqtt/compare/v0.4.3...v0.4.4) (2026-04-02)
+
+
+### Bug Fixes
+
+* **#17:** CatalogNumber may be missing on some XML units ([9cea454](https://github.com/DamianFlynn/cgate-mqtt/commit/9cea454f27217e3fabb3856498074100a5ffb4ee))
+* **#24:** cbusEventChannel missing line-buffering ([9cea454](https://github.com/DamianFlynn/cgate-mqtt/commit/9cea454f27217e3fabb3856498074100a5ffb4ee))
+* **#24:** cbusEventChannel missing line-buffering ([9cea454](https://github.com/DamianFlynn/cgate-mqtt/commit/9cea454f27217e3fabb3856498074100a5ffb4ee))
+* **#25:** started() re-fires one-time init on every reconnect ([9cea454](https://github.com/DamianFlynn/cgate-mqtt/commit/9cea454f27217e3fabb3856498074100a5ffb4ee))
+* use path-prefixed release-please outputs for src package ([#53](https://github.com/DamianFlynn/cgate-mqtt/issues/53)) ([9cea454](https://github.com/DamianFlynn/cgate-mqtt/commit/9cea454f27217e3fabb3856498074100a5ffb4ee))
+
 ## [0.4.3](https://github.com/DamianFlynn/cgate-mqtt/compare/v0.4.2...v0.4.3) (2026-04-02)
 
 
