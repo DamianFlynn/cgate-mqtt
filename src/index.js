@@ -343,6 +343,7 @@ cbusCmdChannel.on('data', function (data) {
         xml2js.parseString(tree, function (err, result) {
           if (err) {
             console.error('Failed to parse tree XML:', err);
+            tree = ''; // clear buffer so the next listing starts clean
             return;
           }
           handleParsedTree(result);
