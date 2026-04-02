@@ -17,78 +17,71 @@
  *   flooding either the C-Gate server or the MQTT broker.
  */
 
-var mqtt    = require('mqtt');          // MQTT client library
-var net     = require('net');           // Node.js TCP socket
-var events  = require('events');        // EventEmitter (used for internal level events)
-var settings = require('./settings.js'); // User configuration (IPs, credentials, flags)
-// const { connect } = require('http2');
+const mqtt    = require('mqtt');          // MQTT client library
+const net     = require('net');           // Node.js TCP socket
+const events  = require('events');        // EventEmitter (used for internal level events)
+const settings = require('./settings.js'); // User configuration (IPs, credentials, flags)
 const fs    = require('fs');            // File system — reads HOME.xml C-Bus project file
 const path  = require('path');          // Path helpers for locating HOME.xml
 const xml2js = require('xml2js');       // Full XML parser used in readXmlFile()
 
 // Import package.json so version/name can be referenced at runtime
 // Note: 'package' is a reserved word in strict mode — use 'pkg' instead.
-var pkg = require('./package.json');
+const pkg = require('./package.json');
 
 // Print startup banner so the container log makes the version immediately visible
 console.log(`Starting ${pkg.name} ... Version: ${pkg.version}`);
 
 // MQTT publish options — if retainreads is set, all state messages are retained
 // on the broker so Home Assistant gets current state immediately on reconnect.
-var options = {};
+const options = {};
 if (settings.retainreads === true) {
   options.retain = true;
 }
 
-// var topicPrefix = "";
-// if (settings.topicPrefix) {
-//   topicPrefix = `${settings.topicPrefix}/`;
-// }
-
-
 // Accumulated XML fragment from multi-line C-Gate tree responses (codes 347/343/344)
-var tree = '';
-var treenet = 0;
+let tree = '';
+let treenet = 0;
 
 // Timer handles — stored so they can be cleared on reconnect to avoid leaking.
 // commandInterval / eventInterval: reconnect-delay timers (setTimeout) for each TCP socket.
 // getallInterval: periodic GET all-levels timer (setInterval) controlled by settings.getallperiod.
 // dltInterval:    periodic DLT time-sync timer  (setInterval) controlled by settings.updateDltTimePeriod.
-var interval = {};
-var commandInterval = {};
-var eventInterval = {};
-var dltInterval = null;
-var getallInterval = null;
+const interval = {};
+const commandInterval = {};
+const eventInterval = {};
+let dltInterval = null;
+let getallInterval = null;
 
 // Connection-state flags — started() checks all three before doing any initialisation work.
-var mqttConnected     = false;
-var cbusCmdConnected  = false;
-var cbusEventConnected = false;
+let mqttConnected     = false;
+let cbusCmdConnected  = false;
+let cbusEventConnected = false;
 
 // Line-buffer for the C-Gate command port data handler.
 // TCP data arrives in arbitrary chunks; we accumulate here and split on newlines.
-var buffer = "";
+let buffer = "";
 
-var eventEmitter = new events.EventEmitter(); // Internal bus — used to forward level values
-var messageinterval = settings.messageinterval || 200; // ms between queued messages
-var logging = settings.logging;  // Convenience alias
-var isRamping = false;           // Debounce flag used during RAMP events
+const eventEmitter = new events.EventEmitter(); // Internal bus — used to forward level values
+const messageinterval = settings.messageinterval || 200; // ms between queued messages
+const logging = settings.logging;  // Convenience alias
+let isRamping = false;           // Debounce flag used during RAMP events
 
 // discoverySent tracks unique IDs already announced to Home Assistant via MQTT discovery,
 // preventing duplicate config payloads on every reconnect.
-var discoverySent = [];
+const discoverySent = [];
 
 // hasStarted prevents started() from re-running one-time init tasks (GET all
 // levels, XML parse) on every reconnect cycle. Set to true on first run.
-var hasStarted = false;
+let hasStarted = false;
 
 // triggerActions is a sparse array indexed by the C-Bus trigger level address.
 // Populated by readXmlFile() from the project Trigger Application (app 202).
 // Used in handleTriggerEvent() to resolve a level index to a human-readable tag name.
-var triggerActions = [];
+const triggerActions = [];
 
 // Device class constants that map to Home Assistant MQTT discovery component types.
-var HASS_DEVICE_CLASSES = {
+const HASS_DEVICE_CLASSES = {
   LIGHT:  "light",
   RELAY:  "switch",
   BUTTON: "button",
@@ -98,7 +91,7 @@ var HASS_DEVICE_CLASSES = {
 // dltUnits holds metadata for each DLT (Electronic Dynamic Labelling) wall switch
 // discovered from HOME.xml. Keyed by C-Bus address string "network/app/group".
 // Used by updateAllDltTime() to push time/date synchronisation to each unit.
-var dltUnits = {};
+const dltUnits = {};
 
 
 // ---------------------------------------------------------------------------
@@ -107,7 +100,7 @@ var dltUnits = {};
 // We do NOT set the will/LWT here; the bridge publishes its own online/offline
 // status from the connect / disconnect handlers below.
 // ---------------------------------------------------------------------------
-var mqttClient = mqtt.connect(`mqtt://${settings.mqtt}`, {
+const mqttClient = mqtt.connect(`mqtt://${settings.mqtt}`, {
   username: settings.mqttusername,
   password: settings.mqttpassword,
   reconnect: true, // Enable automatic reconnection
@@ -124,11 +117,11 @@ var mqttClient = mqtt.connect(`mqtt://${settings.mqtt}`, {
 //            emitted by C-Gate whenever physical switches are operated.
 // Both sockets reconnect automatically via their 'close' handlers below.
 // ---------------------------------------------------------------------------
-var cbusCmdChannel  = new net.Socket();
-var cbusEventChannel = new net.Socket();
-var cgateIpAddr  = settings.cbusip;
-var cbusCmdPort  = 20023;  // C-Gate command/query port
-var cbusEventPort = 20025; // C-Gate event monitor port
+const cbusCmdChannel  = new net.Socket();
+const cbusEventChannel = new net.Socket();
+const cgateIpAddr  = settings.cbusip;
+const cbusCmdPort  = 20023;  // C-Gate command/query port
+const cbusEventPort = 20025; // C-Gate event monitor port
 
 // Initiate the TCP connections; reconnection is handled in each socket's 'close' handler.
 cbusCmdChannel.connect(cbusCmdPort, cgateIpAddr);
@@ -146,7 +139,7 @@ cbusEventChannel.connect(cbusEventPort, cgateIpAddr);
 //
 // Usage:  cgateCommand.write('ON //HOME/254/56/10\n');
 // ---------------------------------------------------------------------------
-var cgateCommand = {
+const cgateCommand = {
   // Enqueue a raw C-Gate command string and kick the drain loop if idle.
   write: function (value) {
     cgateCommand.queue.push(value);
@@ -181,7 +174,7 @@ var cgateCommand = {
 //
 // Usage:  mqttMessage.publish('cbus/light/cbus2-mqtt/cbus_254_56_1/state', 'ON');
 // ---------------------------------------------------------------------------
-var mqttMessage = {
+const mqttMessage = {
   // Enqueue a {topic, payload, opts, callback} object and kick the drain loop if idle.
   // opts defaults to the global `options` object (derived from settings.retainreads)
   // so the retain behaviour is controlled by runtime configuration. Call sites that
@@ -314,7 +307,7 @@ cbusCmdChannel.on('close', function () {
 //   - Process all complete lines (0 .. len-2); keep the trailing partial
 //     line (which may be empty) for the next chunk.
 cbusCmdChannel.on('data', function (data) {
-  if (logging == true) { console.log('Command data: ' + data); }
+  if (logging === true) { console.log('Command data: ' + data); }
 
   // Combine any partial line left over from the previous data event with
   // the new chunk, then split into candidate lines.
@@ -408,7 +401,7 @@ cbusEventChannel.on('close', function () {
 // MQTT topics and Home Assistant discovery.
 // Line-buffer for the C-Gate event port — mirrors the pattern used on the
 // command port.  TCP does not guarantee one event per chunk.
-var eventBuffer = "";
+let eventBuffer = "";
 
 cbusEventChannel.on('data', function (data) {
   const lines = (eventBuffer + data.toString()).split("\n");
@@ -524,7 +517,7 @@ function started() {
         // Defer the initial time push by 5 s so readXmlFile() above has time
         // to finish parsing and populate the dltUnits map before we iterate it.
         setTimeout(function () {
-          if (logging) { console.log('Updating DLT time/date after discovery'); }
+          if (logging === true) { console.log('Updating DLT time/date after discovery'); }
           updateAllDltTime();
         }, 5000);
       }
@@ -533,7 +526,7 @@ function started() {
       if (settings.updateDltTimePeriod) {
         if (dltInterval) { clearInterval(dltInterval); }
         dltInterval = setInterval(function () {
-          if (logging) { console.log('Updating DLT time/date'); }
+          if (logging === true) { console.log('Updating DLT time/date'); }
           updateAllDltTime();
         }, settings.updateDltTimePeriod * 1000);
       }
@@ -668,7 +661,7 @@ function setDltLabel(address, line, text) {
   
   // Build command
   const command = `lighting label ${network}/56 1 ${group} - ${line} ${hexText}\r\n`;
-  if (logging) {
+  if (logging === true) {
     console.log(`Setting DLT label: ${network}/56/${group} button ${line} to "${text}"`);
   }
   cgateCommand.write(command);
@@ -696,7 +689,7 @@ function processTemplate(template) {
 function updateAllDltTime() {
   // Update time/date for all registered DLT units
   if (Object.keys(dltUnits).length === 0) {
-    if (logging) {
+    if (logging === true) {
       console.log('No DLT units registered for time update');
     }
     return;
@@ -711,7 +704,7 @@ function updateDltTime(address) {
   // C-Gate command to update time/date on DLT unit
   // Uses the C-Gate server's current time
   const command = `time //${settings.cbusname}/${address}\n`;
-  if (logging) {
+  if (logging === true) {
     console.log(`Updating DLT time for unit: ${address}`);
   }
   cgateCommand.write(command);
@@ -929,7 +922,7 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
   if (discoverySent.includes(uniqueId)) {
     return;
   }
-  if (logging) {
+  if (logging === true) {
     console.log('Sending Hass discovery message');
   }
   const mqttTopicPrefix = 'homeassistant';
@@ -1060,7 +1053,7 @@ function readXmlFile(filePath) {
       const groupElements = [];
 
       units.forEach(unit => {
-        if (logging == true) { console.log(`Unit: ${JSON.stringify(unit)}`); }
+        if (logging === true) { console.log(`Unit: ${JSON.stringify(unit)}`); }
         const catalogNumber = unit.CatalogNumber[0];
 
         // Catalogue number encodes the channel count: e.g. "L5508D1A"
@@ -1095,7 +1088,7 @@ function readXmlFile(filePath) {
           console.log(`Pack ${unitAddress} [ ${unitName} ] Channel [ ${output}] -> Light Group [ ${groupNumber} ] `);
         });
       });
-      if (logging == true) { console.log(`Group Elements: ${JSON.stringify(groupElements)}`); }
+      if (logging === true) { console.log(`Group Elements: ${JSON.stringify(groupElements)}`); }
       console.log(`Found ${units.length} Light Channel Packs, configured for ${groupElements.length} Group Elements: `);
 
       // --- Pass 2: DLT (Electronic Dynamic Labelling) units ---
@@ -1124,7 +1117,7 @@ function readXmlFile(filePath) {
               unitName:    unitName,
               unitAddress: unitAddress
             };
-            if (logging) {
+            if (logging === true) {
               console.log(`DLT Unit found: ${unitName} (${catalogNumber}) at address ${address}`);
             }
           }
@@ -1196,7 +1189,7 @@ function readXmlFile(filePath) {
         console.log('triggerGroups is undefined');
       }
       
-      if (logging == true) { console.log(`Group Elements: ${JSON.stringify(groupElements)}`) };
+      if (logging === true) { console.log(`Group Elements: ${JSON.stringify(groupElements)}`) };
     });
   });
 }
