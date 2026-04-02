@@ -2,12 +2,23 @@
 name: Docker Image Publish
 
 on:
-  push:
-    branches: [ "main" ]
-    # Publish semver tags as releases.
-    tags: [ 'v*.*.*' ]
+  # PR validation: build only, no push.
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+  # Push to main: builds and pushes latest/sha/date tags.
+  push:
+    branches: ["main"]
+  # Called by release-please.yaml when a release is created.
+  # Passes release_tag so semver Docker tags and release annotation are applied.
+  # (A GITHUB_TOKEN-pushed tag cannot trigger workflows directly — this is the
+  #  workaround for that GitHub Actions restriction.)
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Semver tag created by Release Please (e.g. v0.4.2)"
+        required: false
+        default: ""
+        type: string
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -29,28 +40,28 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          # When called from release-please, check out the tagged commit.
+          ref: ${{ inputs.release_tag || github.sha }}
 
       # Install the cosign tool except on PR
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
         if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@v3.1.1
-        with:
-          cosign-release: 'v2.1.1'
+        uses: sigstore/cosign-installer@v3
 
-      - name: Check install!
+      - name: Check cosign install
         if: github.event_name != 'pull_request'
         run: cosign version
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2.1.0
+        uses: docker/setup-qemu-action@v3
 
-      # Workaround: https://github.com/docker/build-push-action/issues/461
       - name: Setup Docker buildx
         id: buildx
-        uses: docker/setup-buildx-action@v2.5.0
-      
+        uses: docker/setup-buildx-action@v3
+
       - name: Available platforms
         run: echo ${{ steps.buildx.outputs.platforms }}
 
@@ -58,59 +69,55 @@ jobs:
       # https://github.com/docker/login-action
       - name: Log into registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v2.1.0
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # this is a simple way of using date and time to do versioning.
-      - name: Modify scripts and get version
+      - name: Get date version
         id: version
-        run: |
-          output=$(date -u '+%Y%m%d%H%M%S')
-          echo ::set-output name=date_version::$output
+        run: echo "date_version=$(date -u '+%Y%m%d%H%M%S')" >> $GITHUB_OUTPUT
 
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
-      # When triggered by a semver tag (e.g. v1.2.3 from Release Please):
-      #   - ghcr.io/…:1.2.3
-      #   - ghcr.io/…:1.2
-      #   - ghcr.io/…:1
-      # When triggered by a push to main:
-      #   - ghcr.io/…:sha-<sha>
+      #
+      # release path (workflow_call with release_tag input):
+      #   type=semver with value= produces: 1.2.3 / 1.2 / 1
+      # push-to-main path (release_tag empty):
+      #   type=semver with empty value falls back to git ref — no semver tag on a
+      #   branch ref, so these produce nothing. Only sha tag is generated here.
       - name: Extract Docker metadata
         id: docker_meta
-        uses: docker/metadata-action@v4.4.0
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=semver,pattern={{version}},value=${{ inputs.release_tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.release_tag }}
+            type=semver,pattern={{major}},value=${{ inputs.release_tag }}
             type=sha,format=long
        
-      - name: downcase REPO
-        run: |
-          echo "REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+      - name: Downcase REPO
+        run: echo "REPO=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
       - name: Build and Push container images
         id: build-and-push
-        uses: docker/build-push-action@v4.1.1
+        uses: docker/build-push-action@v6
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }} # Don't push on PR
-          labels: ${{ steps.docker_meta.outputs.tags }}
+          push: ${{ github.event_name != 'pull_request' }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64 #,linux/arm/v7
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ steps.docker_meta.outputs.tags }}
-            ghcr.io/${{env.REPO}}:latest
-            ghcr.io/${{env.REPO}}:${{steps.version.outputs.date_version}}
+            ghcr.io/${{ env.REPO }}:latest
+            ghcr.io/${{ env.REPO }}:${{ steps.version.outputs.date_version }}
             
       # # https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
       # - name: Sign image with a key
@@ -130,14 +137,15 @@ jobs:
       #     TAGS: ${{ steps.docker_meta.outputs.tags }}
       #   run: cosign sign --yes "${TAGS}@${DIGEST}"
 
-      # When triggered by a semver tag (v*.*.*), append Docker pull instructions
-      # to the corresponding GitHub Release so users know which image to use.
+      # Append Docker pull instructions to the GitHub Release body.
+      # Only runs when called via workflow_call with a release_tag (release path).
       - name: Annotate GitHub Release with Docker image info
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        if: inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ inputs.release_tag }}"
+          VERSION="${VERSION#v}"
           REPO_LC="${GITHUB_REPOSITORY,,}"
           MINOR="${VERSION%.*}"
 
