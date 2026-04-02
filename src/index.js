@@ -177,9 +177,16 @@ var cgateCommand = {
 // Usage:  mqttMessage.publish('cbus/light/cbus2-mqtt/cbus_254_56_1/state', 'ON');
 // ---------------------------------------------------------------------------
 var mqttMessage = {
-  // Enqueue a {topic, payload} object and kick the drain loop if idle.
-  publish: function (topic, payload) {
-    mqttMessage.queue.push({ topic: topic, payload: payload });
+  // Enqueue a {topic, payload, opts, callback} object and kick the drain loop if idle.
+  // opts defaults to { retain: true } to preserve backwards-compatible behaviour for
+  // callers that do not supply explicit options.
+  publish: function (topic, payload, opts, callback) {
+    mqttMessage.queue.push({
+      topic: topic,
+      payload: payload,
+      opts: opts !== undefined ? opts : { retain: true },
+      callback: typeof callback === 'function' ? callback : undefined
+    });
     if (mqttMessage.interval === null) {
       mqttMessage.interval = setInterval(mqttMessage.process, messageinterval);
       mqttMessage.process(); // send first item immediately
@@ -192,9 +199,12 @@ var mqttMessage = {
       mqttMessage.interval = null;
     } else {
       var msg = mqttMessage.queue.shift();
-      mqttClient.publish(msg.topic, msg.payload, { retain: true }, (err) => {
+      mqttClient.publish(msg.topic, msg.payload, msg.opts, (err) => {
         if (err) {
           console.error('Failed to publish message:', err);
+        }
+        if (msg.callback) {
+          msg.callback(err);
         }
       });
     }
