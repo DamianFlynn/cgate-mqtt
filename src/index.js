@@ -32,7 +32,23 @@ const pkg = require('./package.json');
 // Derive network and application numbers from settings.getallnetapp (e.g. '254/56').
 // Using constants here ensures all address-building code uses the same source of truth
 // rather than hard-coded defaults that would silently break non-standard installations.
-const [cbusNetwork = '254', cbusApplication = '56'] = (settings.getallnetapp || '254/56').split('/');
+function parseCbusNetApp(value) {
+  const defaultNetwork     = '254';
+  const defaultApplication = '56';
+  const raw   = String(value == null ? '' : value).trim();
+  const parts = raw.split('/');
+  const net   = (parts[0] || '').trim();
+  const app   = (parts[1] || '').trim();
+  const netN  = Number(net);
+  const appN  = Number(app);
+  const valid = (s, n) => s !== '' && Number.isInteger(n) && n >= 0 && n <= 255;
+  if (!valid(net, netN) || !valid(app, appN)) {
+    console.warn(`Invalid settings.getallnetapp "${raw || value}" — falling back to ${defaultNetwork}/${defaultApplication}`);
+    return [defaultNetwork, defaultApplication];
+  }
+  return [String(netN), String(appN)];
+}
+const [cbusNetwork, cbusApplication] = parseCbusNetApp(settings.getallnetapp);
 
 // Print startup banner so the container log makes the version immediately visible
 console.log(`Starting ${pkg.name} ... Version: ${pkg.version}`);
@@ -1138,7 +1154,12 @@ function readXmlFile(filePath) {
       // it to the groupElements map by address to get unit metadata, then publish
       // an HA discovery message.  Groups with no unit mapping are "Phantom" groups
       // (virtual circuits with no physical load — used for scene control etc.).
-      const appGroups = result.Installation.Project[0].Network[0].Application.find(app => app.Address[0] === cbusApplication).Group;
+      const lightingApp = result.Installation.Project[0].Network[0].Application.find(app => app.Address[0] === cbusApplication);
+      if (!lightingApp) {
+        console.log(`No Lighting Application found for address ${cbusApplication} in HOME.xml — skipping Pass 3`);
+        return;
+      }
+      const appGroups = lightingApp.Group;
 
       appGroups.forEach(group => {
         const groupAddress  = parseInt(group.Address[0], 10);
