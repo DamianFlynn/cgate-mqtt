@@ -29,6 +29,11 @@ const xml2js = require('xml2js');       // Full XML parser used in readXmlFile()
 // Note: 'package' is a reserved word in strict mode — use 'pkg' instead.
 const pkg = require('./package.json');
 
+// Derive network and application numbers from settings.getallnetapp (e.g. '254/56').
+// Using constants here ensures all address-building code uses the same source of truth
+// rather than hard-coded defaults that would silently break non-standard installations.
+const [cbusNetwork = '254', cbusApplication = '56'] = (settings.getallnetapp || '254/56').split('/');
+
 // Print startup banner so the container log makes the version immediately visible
 console.log(`Starting ${pkg.name} ... Version: ${pkg.version}`);
 
@@ -660,14 +665,14 @@ function setDltLabel(address, line, text) {
   const hexText = Buffer.from(text, 'utf8').toString('hex');
   
   // Build command
-  const command = `lighting label ${network}/56 1 ${group} - ${line} ${hexText}\r\n`;
+  const command = `lighting label ${network}/${cbusApplication} 1 ${group} - ${line} ${hexText}\r\n`;
   if (logging === true) {
-    console.log(`Setting DLT label: ${network}/56/${group} button ${line} to "${text}"`);
+    console.log(`Setting DLT label: ${network}/${cbusApplication}/${group} button ${line} to "${text}"`);
   }
   cgateCommand.write(command);
   
   // Publish confirmation back to MQTT using the full 3-part address to mirror the inbound topic
-  const unitId = `${network}_56_${group}`;
+  const unitId = `${network}_${cbusApplication}_${group}`;
   mqttMessage.publish(`cbus/dlt/${unitId}/${line + 1}/state`, text);
 }
 
@@ -1111,7 +1116,7 @@ function readXmlFile(filePath) {
           if (unitAddress) {
             // Unit addresses in HOME.xml are hex; convert to decimal for the
             // C-Gate address string "network/application/group".
-            const address = `254/56/${parseInt(unitAddress, 16)}`;
+            const address = `${cbusNetwork}/${cbusApplication}/${parseInt(unitAddress, 16)}`;
             dltUnits[address] = {
               catalogNumber: catalogNumber,
               unitName:    unitName,
@@ -1133,7 +1138,7 @@ function readXmlFile(filePath) {
       // it to the groupElements map by address to get unit metadata, then publish
       // an HA discovery message.  Groups with no unit mapping are "Phantom" groups
       // (virtual circuits with no physical load — used for scene control etc.).
-      const appGroups = result.Installation.Project[0].Network[0].Application.find(app => app.Address[0] === '56').Group;
+      const appGroups = result.Installation.Project[0].Network[0].Application.find(app => app.Address[0] === cbusApplication).Group;
 
       appGroups.forEach(group => {
         const groupAddress  = parseInt(group.Address[0], 10);
@@ -1142,13 +1147,13 @@ function readXmlFile(filePath) {
           groupElement.tagName = group.TagName[0]; // human-readable name from Toolkit
           console.log(`Group Tag [${group.TagName[0]}] -> ${groupElement.isDimmer ? 'Dimmer' : 'Relay'} pack (${groupElement.unitAddress}) ${groupElement.unitName} [${groupElement.output}]`);
           if (settings.enableHassDiscovery) {
-            sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, '254', "56", groupAddress, group.TagName[0], groupElement.output, groupElement.unitName, groupElement.unitAddress, groupElement.isDimmer ? 'Dimmer' : 'Relay', groupElement.unitCatalogNumber);
+            sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, cbusNetwork, cbusApplication, groupAddress, group.TagName[0], groupElement.output, groupElement.unitName, groupElement.unitAddress, groupElement.isDimmer ? 'Dimmer' : 'Relay', groupElement.unitCatalogNumber);
           }
         } else {
           // Phantom group — no physical unit; publish as a relay with placeholder metadata.
           console.log(`Group Tag [${group.TagName[0]}] -> 'Relay' pack (Phantom]`);
           if (settings.enableHassDiscovery) {
-            sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, '254', "56", groupAddress, group.TagName[0], "Phantom", "Phantom", "Phantom", 'Relay', "Phantom");
+            sendDiscoveryMessage(HASS_DEVICE_CLASSES.LIGHT, cbusNetwork, cbusApplication, groupAddress, group.TagName[0], "Phantom", "Phantom", "Phantom", 'Relay', "Phantom");
           }
         }
       });
@@ -1179,7 +1184,7 @@ function readXmlFile(filePath) {
 
             console.log(`Trigger (${triggerAddress}) ${triggerTagName} has ${tagNames.length} levels ${JSON.stringify(tagNames)}`);
             if (settings.enableHassDiscovery) {
-              sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, '254', "202", triggerAddress, triggerTagName,null ,null,null ,null ,null, tagNames );
+              sendDiscoveryMessage(HASS_DEVICE_CLASSES.BUTTON, cbusNetwork, "202", triggerAddress, triggerTagName,null ,null,null ,null ,null, tagNames );
             }
           } else {
             console.log(`Trigger (${triggerAddress}) ${triggerTagName} does not have any levels`);
