@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/DamianFlynn/cgate-mqtt/compare/v0.4.4...v0.4.5) (2026-04-03)
+
+
+### Bug Fixes
+
+* harden cbusNetwork/cbusApplication parsing; guard Application.find() ([#57](https://github.com/DamianFlynn/cgate-mqtt/issues/57)) ([e332a9f](https://github.com/DamianFlynn/cgate-mqtt/commit/e332a9f6c58887c45eab10073e9e4bc9755b7730))
+
 ## [0.4.4](https://github.com/DamianFlynn/cgate-mqtt/compare/v0.4.3...v0.4.4) (2026-04-02)
 
 
