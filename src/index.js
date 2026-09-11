@@ -118,14 +118,20 @@ const dltUnits = {};
 // ---------------------------------------------------------------------------
 // MQTT connection
 // The mqtt library handles reconnection automatically (reconnectPeriod: 1000).
-// We do NOT set the will/LWT here; the bridge publishes its own online/offline
-// status from the connect / disconnect handlers below.
+// Publish a retained Last Will so Home Assistant does not keep showing a stale
+// "online" bridge if this process or the Pi dies uncleanly.
 // ---------------------------------------------------------------------------
 const mqttClient = mqtt.connect(`mqtt://${settings.mqtt}`, {
   username: settings.mqttusername,
   password: settings.mqttpassword,
   reconnect: true, // Enable automatic reconnection
-  reconnectPeriod: 1000 // Reconnect every 1 second
+  reconnectPeriod: 1000, // Reconnect every 1 second
+  will: {
+    topic: 'cbus/bridge/cbus2-mqtt/state',
+    payload: 'offline',
+    retain: true,
+    qos: 0
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -261,27 +267,32 @@ mqttClient.on('connect', () => {
   // Attempt startup — will no-op unless C-Gate ports are also connected.
   started();
 
-  // Subscribe to the entire cbus/ namespace.  All command topics from Home
-  // Assistant land here (e.g. cbus/light/cbus2-mqtt/<id>/set).
-  mqttClient.subscribe('cbus/#', (err) => {
+  // Subscribe to C-Bus command topics and Home Assistant's birth message.  HA
+  // 2026 MQTT entities remain unavailable until discovery is processed after
+  // each HA/MQTT restart, so we republish discovery when homeassistant/status
+  // announces "online".
+  mqttClient.subscribe(['cbus/#', 'homeassistant/status'], (err) => {
     if (err) {
-      console.error(`Error subscribing to cbus/#: ${err}`);
+      console.error(`Error subscribing to MQTT topics: ${err}`);
       return;
     }
-    // Route every inbound message to the central MQTT handler.
-    mqttClient.on('message', (topicArg, message, packet) => {
-      handleMqttMessage(topicArg, message);
-    });
   });
 
   // Announce bridge presence — retained so HA shows the bridge as available
   // even if it subscribes after this publish.
-  mqttClient.publish('cbus/bridge/cbus2-mqtt/state', 'online', options, (err) => {
+  mqttClient.publish('cbus/bridge/cbus2-mqtt/state', 'online', { retain: true }, (err) => {
     if (err) {
       console.error(`Error publishing cbus/bridge/cbus2-mqtt/state: ${err}`);
       return;
     }
   });
+});
+
+// Route every inbound message to the central MQTT handler.  This is registered
+// once, outside the connect handler, to avoid duplicate handlers after broker
+// reconnects.
+mqttClient.on('message', (topicArg, message, packet) => {
+  handleMqttMessage(topicArg, message);
 });
 
 
@@ -496,30 +507,34 @@ function ramping() {
  *   4. Optionally starts a periodic GET all-levels timer (getallInterval).
  *   5. Optionally starts DLT time-sync on startup and/or periodically.
  */
+function republishDiscoveryAndPoll(reason) {
+  if (!(cbusCmdConnected && cbusEventConnected && mqttClient.connected)) {
+    return;
+  }
+  console.log(`Republishing Home Assistant discovery (${reason})`);
+  discoverySent.length = 0;
+  sendDiscoveryMessage(HASS_DEVICE_CLASSES.DEVICE);
+  readXmlFile('HOME.xml');
+
+  // Immediately poll all group levels so MQTT state reflects physical reality
+  // without waiting for the first lighting event.  Useful after HA or bridge
+  // restarts because HA 2026 MQTT entities stay unavailable until discovery and
+  // state have both been processed.
+  if (settings.getallnetapp && settings.getallonstart) {
+    console.log('Getting all values');
+    cgateCommand.write('GET //' + settings.cbusname + '/' + settings.getallnetapp + '/* level\n');
+  }
+}
+
 function started() {
   if (cbusCmdConnected && cbusEventConnected && mqttClient.connected) {
     console.log('ALL CONNECTED');
 
-    // Announce the bridge itself to Home Assistant as a sensor/device.
-    // This is safe to re-run on reconnect — discoverySent guards duplicates.
-    sendDiscoveryMessage(HASS_DEVICE_CLASSES.DEVICE);
-
-    // One-time startup tasks: only run on the first successful connection.
-    // On reconnect, we skip these to avoid duplicate GET storms and XML re-parses.
+    // First successful startup does the full discovery publish + state poll.
+    // Reconnects leave the periodic poll below in place; Home Assistant birth
+    // messages trigger explicit rediscovery via handleMqttMessage().
     if (!hasStarted) {
-      // Parse the C-Bus project XML to build the group/trigger/DLT maps and
-      // send individual Home Assistant discovery messages for each entity.
-      // hasStarted is set to true inside readXmlFile on successful parse so
-      // that a file-not-found or parse error allows a subsequent reconnect to
-      // retry the init tasks rather than silently staying un-initialised.
-      readXmlFile('HOME.xml');
-
-      // Immediately poll all group levels so MQTT state reflects physical reality
-      // without waiting for the first lighting event.  Useful after a restart.
-      if (settings.getallnetapp && settings.getallonstart) {
-        console.log('Getting all values');
-        cgateCommand.write('GET //' + settings.cbusname + '/' + settings.getallnetapp + '/* level\n');
-      }
+      republishDiscoveryAndPoll('startup');
     }
 
     // Start a recurring poll if configured.  Guard-clear ensures we don't
@@ -583,6 +598,16 @@ function handleMqttMessage(topicArg, message) {
     console.log(`Message received on ${topicArg}: ${message}`);
   }
   let topic = topicArg;
+
+  // Home Assistant birth message: republish discovery and poll all levels so
+  // restored MQTT entities are rebound after HA/MQTT restarts.
+  if (topicArg === 'homeassistant/status') {
+    if (message.toString().toLowerCase() === 'online') {
+      republishDiscoveryAndPoll('homeassistant birth');
+    }
+    return;
+  }
+
   const parts = topic.split("/");
 
   // DLT label-set messages have a different topic shape (cbus/dlt/...)
@@ -916,7 +941,7 @@ function getTagNamesByTriggerAddress(triggerActions, triggerAddress) {
  * sendDiscoveryMessage — publishes a Home Assistant MQTT discovery config payload.
  *
  * MQTT discovery allows HA to automatically create entities without manual YAML.
- * We publish to:  homeassistant/<component>/cbus2-mqtt/<uniqueId>/config
+ * We publish to:  homeassistant/<component>/<uniqueId>/config
  *
  * Called with deviceClass = HASS_DEVICE_CLASSES.DEVICE once to register the
  * bridge itself, then once per light group, and once per trigger group.
@@ -946,21 +971,26 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
   if (logging === true) {
     console.log('Sending Hass discovery message');
   }
-  const mqttTopicPrefix = 'homeassistant';
+  const mqttTopicPrefix = settings.topicPrefix || 'homeassistant';
   const mqttTopicSuffix = 'cbus2-mqtt';
-  var mqttTopic = `${mqttTopicPrefix}/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/config`;
+  // HA 2026 handles retained single-component discovery more reliably when the
+  // object id is the unique id and the optional node_id segment is omitted.
+  // The legacy topic is cleared below after publishing the new topic.
+  var mqttTopic = `${mqttTopicPrefix}/${deviceClass}/${uniqueId}/config`;
+  var legacyMqttTopic = `${mqttTopicPrefix}/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/config`;
   const device = {
     identifiers: [`cbus2-mqtt`],
     name: 'C-Bus ',
     manufacturer: 'DamianFlynn.com',
     model: 'C-Bus C-Gate MQTT Bridge',
-    sw_version: pkg.version,
-    via_device: `cbus2-mqtt`
+    sw_version: pkg.version
   };
   let payload = {};
   switch (deviceClass) {
     case "device":
       console.log('Sending HASS Discovery message for CBUS-MQTT');
+      mqttTopic = `${mqttTopicPrefix}/sensor/cbus2-mqtt/config`;
+      legacyMqttTopic = `${mqttTopicPrefix}/device/${mqttTopicSuffix}/${uniqueId}/config`;
       payload = {
         name: 'Bridge Status',
         unique_id: `cbus2-mqtt`,
@@ -972,7 +1002,6 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
       payload = {
         name: `${tagName}`,
         unique_id: `${uniqueId}`,
-        default_entity_id: `light.${uniqueId}`,
         state_topic: `cbus/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/state`,
         command_topic: `cbus/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/set`,
         json_attributes_topic: `cbus/${deviceClass}/${mqttTopicSuffix}/${uniqueId}/attributes`,
@@ -1002,7 +1031,6 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
       payload = {
         name: `${tagName}`,
         unique_id: `${uniqueId}`,
-        default_entity_id: `event.${uniqueId}`,
         availability_topic: "cbus/bridge/cbus2-mqtt/state",
         payload_available: "online",
         payload_not_available: "offline",
@@ -1012,12 +1040,16 @@ function sendDiscoveryMessage(deviceClass, networkId, serviceId, groupId, tagNam
         state_topic: `cbus/event/${mqttTopicSuffix}/${uniqueId}/state`,
         icon: eventTypes ? "mdi:gesture-double-tap" : "mdi:gesture-tap"
       };
-      mqttTopic = `${mqttTopicPrefix}/event/${mqttTopicSuffix}/${uniqueId}/config`;
+      mqttTopic = `${mqttTopicPrefix}/event/${uniqueId}/config`;
+      legacyMqttTopic = `${mqttTopicPrefix}/event/${mqttTopicSuffix}/${uniqueId}/config`;
       break;
     default:
       return;
   }
   mqttMessage.publish(mqttTopic, JSON.stringify(payload), { retain: true });
+  if (legacyMqttTopic !== mqttTopic) {
+    mqttMessage.publish(legacyMqttTopic, '', { retain: true });
+  }
   discoverySent.push(uniqueId);
 }
 
