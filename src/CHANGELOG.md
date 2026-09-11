@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/DamianFlynn/cgate-mqtt/compare/v0.4.5...v0.4.6) (2026-09-11)
+
+
+### Bug Fixes
+
+* modernize MQTT discovery for HA 2026.09 ([10af7e7](https://github.com/DamianFlynn/cgate-mqtt/commit/10af7e777d164a400b8dba63ad5a3c9e1c150670))
+
 ## [0.4.5](https://github.com/DamianFlynn/cgate-mqtt/compare/v0.4.4...v0.4.5) (2026-04-03)
 
 
